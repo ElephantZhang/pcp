@@ -365,7 +365,7 @@ on_series_value(pmSID sid, pmSeriesValue *value, void *arg)
     int			need_free = 1;
 
     if (series_next(dp, sid))
-	printf("\n%s\n", sid);
+	printf("\n %s\n", sid);
 
     data = value->data;
     if (dp->type == NULL)
@@ -385,7 +385,7 @@ on_series_value(pmSID sid, pmSeriesValue *value, void *arg)
     printf("] ");
 
     series = value->series;
-    if (sdscmp(series, sid) == 0)
+    if (sdscmp(series, sid) == 0)//kyoma: 这里打具体timeseries values
 	printf("%s\n", data);
     else if ((ip = series_get_inst(dp, series)) == NULL)
 	printf("%s %s\n", data, series);

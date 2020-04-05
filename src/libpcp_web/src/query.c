@@ -26,6 +26,9 @@
 #define SHA1SZ		20	/* internal sha1 hash buffer size in bytes */
 #define QUERY_PHASES	6
 
+#define QUERY_AVG 25252
+#define QUERY_PLUS 114514
+
 typedef struct seriesGetSID {
     seriesBatonMagic	header;		/* MAGIC_SID */
     sds			name;		/* series or source SID */
@@ -71,6 +74,7 @@ typedef struct seriesQueryBaton {
 	seriesGetLookup	lookup;
 	seriesGetQuery	query;
     } u;
+    int flags;
 } seriesQueryBaton;
 
 static void series_pattern_match(seriesQueryBaton *, node_t *);
@@ -85,6 +89,8 @@ sds	cursorcount;	/* number of elements in each SCAN call */
 static void
 initSeriesGetQuery(seriesQueryBaton *baton, node_t *root, timing_t *timing)
 {
+    //fprintf(stderr, "kyoma, call of initSeriesGetQuery\n");
+
     seriesBatonCheckMagic(baton, MAGIC_QUERY, "initSeriesGetQuery");
     baton->u.query.root = *root;
     baton->u.query.timing = *timing;
@@ -93,6 +99,8 @@ initSeriesGetQuery(seriesQueryBaton *baton, node_t *root, timing_t *timing)
 static void
 freeSeriesGetQuery(seriesQueryBaton *baton)
 {
+    //fprintf(stderr, "kyoma, call of freeSeriesGetQuery\n");
+
     seriesBatonCheckMagic(baton, MAGIC_QUERY, "freeSeriesGetQuery");
     seriesBatonCheckCount(baton, "freeSeriesGetQuery");
     memset(baton, 0, sizeof(seriesQueryBaton));
@@ -103,6 +111,8 @@ static void
 initSeriesGetLabelMap(seriesGetLabelMap *value, sds series, sds name,
 		redisMap *map, sds mapID, sds mapKey, void *baton)
 {
+    //fprintf(stderr, "kyoma, call of initSeriesGetLabelMap\n");
+
     initSeriesBatonMagic(value, MAGIC_LABELMAP);
     value->map = map;
     value->series = sdsdup(series);
@@ -115,6 +125,8 @@ initSeriesGetLabelMap(seriesGetLabelMap *value, sds series, sds name,
 static void
 freeSeriesGetLabelMap(seriesGetLabelMap *value)
 {
+    //fprintf(stderr, "kyoma, call of freeSeriesGetLabelMap\n");
+
     seriesBatonCheckMagic(value, MAGIC_LABELMAP, "freeSeriesGetLabelMap");
 
     redisMapRelease(value->map);
@@ -128,6 +140,8 @@ freeSeriesGetLabelMap(seriesGetLabelMap *value)
 static void
 initSeriesGetSID(seriesGetSID *sid, const char *name, int needfree, void *baton)
 {
+    //fprintf(stderr, "kyoma, call of initSeriesGetSID\n");
+
     initSeriesBatonMagic(sid, MAGIC_SID);
     sid->name = sdsnew(name);
     sid->freed = needfree;
@@ -137,6 +151,8 @@ initSeriesGetSID(seriesGetSID *sid, const char *name, int needfree, void *baton)
 static void
 freeSeriesGetSID(seriesGetSID *sid)
 {
+    //fprintf(stderr, "kyoma, call of freeSeriesGetSID\n");
+
     int			needfree;
 
     seriesBatonCheckMagic(sid, MAGIC_SID, "freeSeriesGetSID");
@@ -151,6 +167,8 @@ static void
 initSeriesQueryBaton(seriesQueryBaton *baton,
 		pmSeriesSettings *settings, void *userdata)
 {
+    //fprintf(stderr, "kyoma, call of initSeriesQueryBaton\n");
+
     seriesModuleData	*data = getSeriesModuleData(&settings->module);
 
     initSeriesBatonMagic(baton, MAGIC_QUERY);
@@ -165,6 +183,8 @@ static void
 initSeriesGetLookup(seriesQueryBaton *baton, int nseries, sds *series,
 		pmSeriesStringCallBack func, redisMap *map)
 {
+    //fprintf(stderr, "kyoma, call of initSeriesGetLookup\n");
+
     seriesGetSID	*sid;
     unsigned int	i;
 
@@ -184,6 +204,8 @@ initSeriesGetLookup(seriesQueryBaton *baton, int nseries, sds *series,
 static void
 freeSeriesGetLookup(seriesQueryBaton *baton)
 {
+    //fprintf(stderr, "kyoma, call of freeSeriesGetLookup\n");
+
     seriesGetSID	*sid;
     size_t		bytes;
     unsigned int	i, nseries;
@@ -204,6 +226,8 @@ freeSeriesGetLookup(seriesQueryBaton *baton)
 static void
 series_query_finished(void *arg)
 {
+    //fprintf(stderr, "kyoma, call of series_query_finished\n");
+
     seriesQueryBaton	*baton = (seriesQueryBaton *)arg;
 
     baton->callbacks->on_done(baton->error, baton->userdata);
@@ -213,6 +237,8 @@ series_query_finished(void *arg)
 static void
 series_query_end_phase(void *arg)
 {
+    //fprintf(stderr, "kyoma, call of series_query_end_phase\n");
+
     seriesQueryBaton	*baton = (seriesQueryBaton *)arg;
 
     seriesBatonCheckMagic(baton, MAGIC_QUERY, "series_query_end_phase");
@@ -228,6 +254,8 @@ series_query_end_phase(void *arg)
 const char *
 series_instance_name(sds key)
 {
+    //fprintf(stderr, "kyoma, call of series_instance_name\n");
+
     size_t	length = sdslen(key);
 
     if (length >= sizeof("instance.") &&
@@ -293,6 +321,8 @@ series_label_name(sds key)
 const char *
 node_subtype(node_t *np)
 {
+    fprintf(stderr, "kyoma, call of node_subtype\n");
+
     switch (np->subtype) {
 	case N_QUERY: return "query";
 	case N_LABEL: return "label";
@@ -308,6 +338,8 @@ static int
 extract_string(seriesQueryBaton *baton, pmSID series,
 		redisReply *reply, sds *string, const char *message)
 {
+    //fprintf(stderr, "kyoma, call of extract_string\n");
+
     sds			msg;
 
     if (reply->type == REDIS_REPLY_STRING) {
@@ -324,6 +356,8 @@ static int
 extract_mapping(seriesQueryBaton *baton, pmSID series,
 		redisReply *reply, sds *string, const char *message)
 {
+    fprintf(stderr, "kyoma, call of extract_mapping\n");
+
     redisMapEntry	*entry;
     sds			msg, key;
 
@@ -369,6 +403,48 @@ extract_sha1(seriesQueryBaton *baton, pmSID series,
     return 0;
 }
 
+
+static double
+series_instance_avg_reply(seriesQueryBaton *baton, sds series,
+    pmSeriesValue *value, int nelements, redisReply **elements)
+{
+    //fprintf(stderr, "kyoma, call of series_instance_reply, nelements=%d\n", nelements);
+
+    char        hashbuf[42];
+    sds         inst;
+    int         i, sts = 0;
+    double	sum = 0.0;
+
+//kyoma: 已经得到结果了吧, 开始打印
+
+
+    for (i = 0; i < nelements; i += 2) {
+	inst = value->series;
+	if (extract_string(baton, series, elements[i], &inst, "series") < 0) {
+	    sts = -EPROTO;
+	    continue;
+	}
+	if (sdslen(inst) == 0) {    /* no InDom, use series */
+	    inst = sdscpylen(inst, series, 40);
+	} else if (sdslen(inst) == 20) {
+	    pmwebapi_hash_str((const unsigned char *)inst, hashbuf, sizeof(hashbuf));
+	    inst = sdscpylen(inst, hashbuf, 40);
+	} else {
+	    /* TODO: propogate errors and mark records - separate callbacks? */
+	    continue;
+	}
+	value->series = inst;
+
+	if (extract_string(baton, series, elements[i+1], &value->data, "value") < 0)
+	    sts = -EPROTO;
+	else {
+	    //baton->callbacks->on_value(series, value, baton->userdata);
+	    sum += atof(value->data);
+	}
+    }
+    return sum;
+}
+
 /*
  * Report a timeseries result - timestamps and (instance) values
  */
@@ -376,9 +452,14 @@ static int
 series_instance_reply(seriesQueryBaton *baton, sds series,
 	pmSeriesValue *value, int nelements, redisReply **elements)
 {
+    //fprintf(stderr, "kyoma, call of series_instance_reply, nelements=%d\n", nelements);
+
     char		hashbuf[42];
     sds			inst;
     int			i, sts = 0;
+
+//kyoma: 已经得到结果了吧, 开始打印
+
 
     for (i = 0; i < nelements; i += 2) {
 	inst = value->series;
@@ -399,8 +480,9 @@ series_instance_reply(seriesQueryBaton *baton, sds series,
 
 	if (extract_string(baton, series, elements[i+1], &value->data, "value") < 0)
 	    sts = -EPROTO;
-	else
+	else {
 	    baton->callbacks->on_value(series, value, baton->userdata);
+	}
     }
     return sts;
 }
@@ -409,6 +491,8 @@ static int
 extract_time(seriesQueryBaton *baton, pmSID series,
 		redisReply *reply, sds *stamp, pmTimespec *ts)
 {
+    //fprintf(stderr, "kyoma, call of extract_time\n");
+
     sds			msg, val;
     char		*point = NULL;
     __uint64_t		milliseconds, fractions, crossover;
@@ -436,6 +520,8 @@ extract_time(seriesQueryBaton *baton, pmSID series,
 static inline int
 pmTimespec_cmp(pmTimespec *a, pmTimespec *b)
 {
+    //fprintf(stderr, "kyoma, call of pmTimespec_cmp\n");
+
     if (a->tv_sec != b->tv_sec)
 	return (a->tv_sec > b->tv_sec) ? 1 : -1;
     if (a->tv_nsec > b->tv_nsec)
@@ -448,6 +534,8 @@ pmTimespec_cmp(pmTimespec *a, pmTimespec *b)
 static inline void
 pmTimespec_add(pmTimespec *t1, pmTimespec *t2)
 {
+    //fprintf(stderr, "kyoma, call of pmTimespec_add\n");
+
     __int64_t		sec = t1->tv_sec + t2->tv_sec;
     __int64_t		nsec = t1->tv_nsec + t2->tv_nsec;
 
@@ -473,6 +561,8 @@ typedef struct seriesSampling {
 static int
 use_next_sample(seriesSampling *sampling)
 {
+    //fprintf(stderr, "kyoma, call of use_next_sample\n");
+
     /* if the next timestamp is past our goal, use the current value */
     if (pmTimespec_cmp(&sampling->next_timespec, &sampling->goal) > 0) {
 	/* selected a value for this interval so move the goal posts */
@@ -486,11 +576,14 @@ static void
 series_values_reply(seriesQueryBaton *baton, sds series,
 		int nsamples, redisReply **samples, void *arg)
 {
+    //fprintf(stderr, "kyoma, call of series_values_reply, nsamples=%d\n", nsamples);
+
     seriesSampling	sampling = {0};
     redisReply		*reply, *sample, **elements;
     timing_t		*tp = &baton->u.query.timing;
     int			n, sts, next, nelements;
     sds			msg, save_timestamp;
+    double avg = 0.0;
 
     sampling.value.timestamp = sdsempty();
     sampling.value.series = sdsempty();
@@ -577,8 +670,17 @@ series_values_reply(seriesQueryBaton *baton, sds series,
 	if (tp->count && sampling.count++ >= tp->count)
 	    break;
 
-	if ((sts = series_instance_reply(baton, series, &sampling.value,
-				reply->elements, reply->element)) < 0) {
+	if(baton->flags == QUERY_AVG){
+	    /*avg += get_instance_sum(baton, series, &sampling.value,
+				reply->elements, reply->element);*/
+	    avg += series_instance_avg_reply(baton, series, &sampling.value,
+				reply->elements, reply->element);
+	}else{
+	    sts = series_instance_reply(baton, series, &sampling.value,
+				reply->elements, reply->element);
+	}
+
+	if (sts < 0) {
 	    baton->error = sts;
 	    goto last_sample;
 	}
@@ -594,6 +696,12 @@ next_sample:
     }
 
 last_sample:
+    if(baton->flags == QUERY_AVG){
+	sampling.value.series = sdsnew("");
+    	sprintf(sampling.value.data, "%f", avg/nsamples);
+	printf("%s", series);
+    	baton->callbacks->on_value("", &sampling.value, baton->userdata);
+    }
     if (sampling.setup)
 	sdsfree(sampling.next_timestamp);
     sdsfree(sampling.value.timestamp);
@@ -610,6 +718,8 @@ last_sample:
 static int
 node_series_reply(seriesQueryBaton *baton, node_t *np, int nelements, redisReply **elements)
 {
+    //fprintf(stderr, "kyoma, call of node_series_reply\n");
+
     series_set_t	set;
     unsigned char	*series;
     redisReply		*reply;
@@ -657,6 +767,8 @@ node_series_reply(seriesQueryBaton *baton, node_t *np, int nelements, redisReply
 static int
 series_compare(const void *a, const void *b)
 {
+    //fprintf(stderr, "kyoma, call of series_compare\n");
+
     return memcmp(a, b, SHA1SZ);
 }
 
@@ -675,6 +787,8 @@ series_compare(const void *a, const void *b)
 static int
 series_intersect(series_set_t *a, series_set_t *b)
 {
+    //fprintf(stderr, "kyoma, call of series_intersect\n");
+
     unsigned char	*small, *large, *saved, *cp;
     int			nsmall, nlarge, total, i;
 
@@ -723,9 +837,12 @@ series_intersect(series_set_t *a, series_set_t *b)
     return 0;
 }
 
+
 static int
 node_series_intersect(node_t *np, node_t *left, node_t *right)
 {
+    //fprintf(stderr, "kyoma, call of node_series_intersect\n");
+
     int			sts;
 
     if ((sts = series_intersect(&left->result, &right->result)) >= 0)
@@ -752,6 +869,8 @@ node_series_intersect(node_t *np, node_t *left, node_t *right)
 static int
 series_union(series_set_t *a, series_set_t *b)
 {
+    //fprintf(stderr, "kyoma, call of series_union\n");
+
     unsigned char	*cp, *saved, *large, *small;
     int			nlarge, nsmall, total, need, i;
 
@@ -807,12 +926,110 @@ series_union(series_set_t *a, series_set_t *b)
 }
 
 static int
+series_plus(series_set_t *a, series_set_t *b)
+{
+    //fprintf(stderr, "kyoma, call of series_plus\n");
+    unsigned char *cp, *saved, *as, *bs;
+    int nas, nbs, total, need, i;
+
+    as = a->series; 
+    nas = a->nseries;
+    bs = b->series;
+    nbs = b->nseries;
+
+    need = nbs;
+
+    if ((cp = realloc(as, (nas + need)*SHA1SZ) )== NULL) {
+	return -ENOMEM;
+    }
+    as = cp;
+    cp += ((nas) * SHA1SZ);
+
+    //strcpy(cp, "plus");
+    //cp += SHA1SZ;
+    memcpy(cp, bs, need*SHA1SZ);
+    total = nas + need;
+
+    char        hashbuf[42];
+
+    /*fprintf(stderr, "Union result set contains %d series:\n", total);
+    for (i = 0, cp = as; i < total; cp += SHA1SZ, i++) {
+        if(strlen(cp) == 4){
+	    fprintf(stderr, "%s\n", cp);
+        continue;
+        }
+        pmwebapi_hash_str(cp, hashbuf, sizeof(hashbuf));
+        fprintf(stderr, "    %s\n", hashbuf);
+    }*/
+    a->nseries = total;
+    a->series = as;
+    b->series = NULL;
+    b->nseries = 0;
+    free(bs);
+
+    return 0;
+}
+
+
+static int
+node_series_avg(node_t *np, node_t *left){
+    //fprintf(stderr, "kyoma, call of node_series_avg\n");
+    int         sts = 0;
+    np->result = left->result;
+
+    return sts;
+}
+
+static int
+node_series_plus(node_t *np, node_t *left, node_t *right)
+{
+    //fprintf(stderr, "kyoma, call of node_series_plus\n");
+    int         sts;
+    series_set_t *a = &left->result;
+    series_set_t *b = &right->result;
+
+    if((sts = series_plus(&left->result, &right->result)) >= 0){
+	np->result = left->result;
+    }
+    right->result.nseries = left->result.nseries = 0;
+    
+/* 我就试着打印一下sid, 从series_report_set和on_series_match各抄了一点来
+    unsigned char *sa = a->series;
+    char a_hashbuf[42];
+    sds a_sid=NULL;
+    int i;
+    if(a->nseries)
+    a_sid = sdsempty();
+    for (i = 0; i < a->nseries; sa += SHA1SZ, i++){
+    pmwebapi_hash_str(sa, a_hashbuf, sizeof(a_hashbuf));
+    a_sid = sdscpylen(a_sid, a_hashbuf, 40);
+    fprintf(stderr, "sid=%s\n", a_sid);
+    }
+    unsigned char *sb = b->series;
+    char b_hashbuf[42];
+    sds b_sid=NULL;
+    if(b->nseries)
+    b_sid = sdsempty();
+    for (i = 0; i < b->nseries; sb += SHA1SZ, i++){
+    pmwebapi_hash_str(sb, b_hashbuf, sizeof(b_hashbuf));
+    b_sid = sdscpylen(b_sid, b_hashbuf, 40);
+    fprintf(stderr, "sid=%s\n", b_sid);
+    }
+*/
+
+    return sts;
+}
+
+static int
 node_series_union(node_t *np, node_t *left, node_t *right)
 {
+    fprintf(stderr, "kyoma, call of node_series_union\n");
+
     int			sts;
 
     if ((sts = series_union(&left->result, &right->result)) >= 0)
 	np->result = left->result;
+   //kyoma: 看来合并是直接把left和right的值存到这个点的result里
 
     /* finished with child leaves now, results percolated up */
     right->result.nseries = left->result.nseries = 0;
@@ -822,6 +1039,8 @@ node_series_union(node_t *np, node_t *left, node_t *right)
 static int
 string_pattern_match(node_t *np, sds pattern, char *string, int length)
 {
+    //fprintf(stderr, "kyoma, call of string_pattern_match\n");
+
     int		sts;
 
     /* if the string is in double quotes, we want to pattern match */
@@ -851,6 +1070,7 @@ static int
 node_pattern_reply(seriesQueryBaton *baton, node_t *np, const char *name, int nelements,
 		redisReply **elements)
 {
+    //fprintf(stderr, "kyoma, call of node_pattern_reply\n");
     redisReply		*reply, *r;
     sds			msg, key, pattern, *matches;
     char		buffer[42];
@@ -952,6 +1172,8 @@ static void
 series_prepare_maps_pattern_reply(
 	redisAsyncContext *c, redisReply *reply, const sds cmd, void *arg)
 {
+    //fprintf(stderr, "kyoma, call of series_prepare_maps_pattern_reply\n");
+
     node_t		*np = (node_t *)arg;
     seriesQueryBaton	*baton = (seriesQueryBaton *)np->baton;
     const char		*name;
@@ -990,6 +1212,8 @@ series_prepare_maps_pattern_reply(
 static void
 series_pattern_match(seriesQueryBaton *baton, node_t *np)
 {
+    //fprintf(stderr, "kyoma, call of series_pattern_match\n");
+
     sds			cmd, cur, key;
 
     seriesBatonReference(baton, "series_pattern_match");
@@ -1012,6 +1236,9 @@ series_pattern_match(seriesQueryBaton *baton, node_t *np)
 static int
 series_prepare_maps(seriesQueryBaton *baton, node_t *np, int level)
 {
+    //fprintf(stderr, "kyoma, call of series_prepare_maps\n");
+    //fprintf(stderr, "level=%d\n", level);
+
     unsigned char	hash[20];
     const char		*name;
     char		buffer[42];
@@ -1020,8 +1247,9 @@ series_prepare_maps(seriesQueryBaton *baton, node_t *np, int level)
     if (np == NULL)
 	return 0;
 
+    //fprintf(stderr, "in series_prepare_maps, go left\n");
     if ((sts = series_prepare_maps(baton, np->left, level+1)) < 0)
-	return sts;
+	return sts;//kyoma: 看来level是第几层, 一直往左走
 
     switch (np->type) {
     case N_NAME:
@@ -1030,7 +1258,8 @@ series_prepare_maps(seriesQueryBaton *baton, node_t *np, int level)
 	    np->subtype = N_INSTANCE;
 	    np->key = sdsnew("pcp:map:inst.name");
 	} else if ((name = series_metric_name(np->value)) != NULL) {
-	    np->subtype = N_METRIC;
+        //kyoma: kernal.all.load会认为是N_METRIC, 那部分path呢? 一会测试
+	    np->subtype = N_METRIC; 
 	    np->key = sdsnew("pcp:map:metric.name");
 	} else if ((name = series_context_name(np->value)) != NULL) {
 	    np->subtype = N_CONTEXT;
@@ -1056,12 +1285,15 @@ series_prepare_maps(seriesQueryBaton *baton, node_t *np, int level)
 	break;
     }
 
+    //fprintf(stderr, "in series_prepare_maps, go right\n");
     return series_prepare_maps(baton, np->right, level+1);
 }
 
 static sds
 series_node_value(node_t *np)
 {
+    //fprintf(stderr, "kyoma, call of series_node_value\n");
+
     unsigned char	hash[20];
     sds			val = sdsnewlen(SDS_NOINIT, 40);
 
@@ -1084,6 +1316,8 @@ static void
 series_prepare_smembers_reply(
 	redisAsyncContext *c, redisReply *reply, const sds cmd, void *arg)
 {
+    //fprintf(stderr, "kyoma, call of series_prepare_smembers_reply\n");
+
     node_t		*np = (node_t *)arg;
     seriesQueryBaton	*baton = (seriesQueryBaton *)np->baton;
     sds			msg;
@@ -1120,6 +1354,8 @@ series_prepare_smembers_reply(
 static void
 series_prepare_smembers(seriesQueryBaton *baton, sds kp, node_t *np)
 {
+    //fprintf(stderr, "kyoma, call of series_prepare_smembers\n");
+
     sds                 cmd, key = sdsdup(kp);
 
     cmd = redis_command(2);
@@ -1135,14 +1371,20 @@ series_prepare_smembers(seriesQueryBaton *baton, sds kp, node_t *np)
 static int
 series_prepare_eval(seriesQueryBaton *baton, node_t *np, int level)
 {
+    //fprintf(stderr, "kyoma, call of series_prepare_eval\n");
+    //fprintf(stderr, "level=%d\n", level);
+
     sds 		val;
     int			sts, i;
     node_t		*left;
     const char		*name;
 
-    if (np == NULL)
+    if (np == NULL){
+	//fprintf(stderr, "in series_prepare_eval, NULL, return 0\n");
 	return 0;
+    }
 
+    //fprintf(stderr, "in series_prepare_eval, go left\n");
     if ((sts = series_prepare_eval(baton, np->left, level+1)) < 0)
 	return sts;
 
@@ -1154,15 +1396,21 @@ series_prepare_eval(seriesQueryBaton *baton, node_t *np, int level)
 	val = series_node_value(np);
 	np->key = sdsnew("pcp:series:");
 	np->key = sdscatfmt(np->key, "%s:%S", name, val);
+    //kyoma: %S宽字符, 此处的val直接是个hash值?
+
 	sdsfree(val);
 	np->baton = baton;
 	seriesBatonReference(baton, "series_prepare_expr[direct]");
+    
+    //fprintf(stderr, "submit commond is: smembers %s\n",np->key);
+    
 	series_prepare_smembers(baton, np->key, np);
+    //返回key集合所有的元素. 该命令的作用与使用一个参数的SINTER 命令作用相同.
 	break;
 
-    case N_GLOB:	/* globbing or regular expression lookups */
+    case N_GLOB:	/* globbing遍历 or regular expression lookups */
     case N_REQ:
-    case N_RNE:
+    case N_RNE: //RNE是~
 	np->baton = baton;
 	if (np->nmatches > 0)
 	    seriesBatonReferences(baton, np->nmatches, "series_prepare_eval[pattern]");
@@ -1174,7 +1422,30 @@ series_prepare_eval(seriesQueryBaton *baton, node_t *np, int level)
 	break;
     }
 
+    //fprintf(stderr, "in series_prepare_eval, go right\n");
     return series_prepare_eval(baton, np->right, level+1);
+}
+
+static int
+series_prepare_funcs(seriesQueryBaton *baton, node_t *np, int level)
+{
+    fprintf(stderr, "kyoma, call of series_prepare_funcs\n");
+    int		sts;
+    if (np == NULL)
+	return 0;
+    if ((sts = series_prepare_funcs(baton, np->left, level+1)) < 0){
+	return sts;
+    }
+    if ((sts = series_prepare_funcs(baton, np->right, level+1)) < 0){
+	return sts;
+    }
+    switch (np->type) {
+	case N_PLUS:
+
+	default:
+	break;
+    }
+    return sts;
 }
 
 /*
@@ -1183,6 +1454,8 @@ series_prepare_eval(seriesQueryBaton *baton, node_t *np, int level)
 static int
 series_prepare_expr(seriesQueryBaton *baton, node_t *np, int level)
 {
+    //fprintf(stderr, "kyoma, call of series_prepare_expr\n");
+
     int			sts;
 
     if (np == NULL)
@@ -1206,6 +1479,16 @@ series_prepare_expr(seriesQueryBaton *baton, node_t *np, int level)
 	sts = node_series_union(np, np->left, np->right);
 	break;
 
+    case N_PLUS:
+	baton->flags = QUERY_PLUS;
+	sts = node_series_plus(np, np->left, np->right);
+	break;
+
+    case N_AVG:
+	baton->flags = QUERY_AVG;
+	sts = node_series_avg(np, np->left);
+	break;
+
     default:
 	break;
     }
@@ -1216,6 +1499,8 @@ static void
 series_prepare_time_reply(
 	redisAsyncContext *c, redisReply *reply, const sds cmd, void *arg)
 {
+    //fprintf(stderr, "kyoma, call of series_prepare_time_reply\n");
+
     seriesGetSID	*sid = (seriesGetSID *)arg;
     seriesQueryBaton	*baton = (seriesQueryBaton *)sid->baton;
     sds			msg;
@@ -1246,6 +1531,8 @@ series_prepare_time_reply(
 unsigned int
 series_value_count_only(timing_t *tp)
 {
+    //fprintf(stderr, "kyoma, call of series_value_count_only, count=%d\n", tp->count);
+
     if (tp->window.range || tp->window.delta ||
 	tp->window.start || tp->window.end)
 	return 0;
@@ -1255,6 +1542,8 @@ series_value_count_only(timing_t *tp)
 static void
 series_prepare_time(seriesQueryBaton *baton, series_set_t *result)
 {
+    //fprintf(stderr, "kyoma, call of series_prepare_time, flags=%d, nseries=%d\n", baton->flags, result->nseries);
+
     timing_t		*tp = &baton->u.query.timing;
     unsigned char	*series = result->series;
     seriesGetSID	*sid;
@@ -1295,6 +1584,7 @@ series_prepare_time(seriesQueryBaton *baton, series_set_t *result)
 	seriesBatonReference(baton, "series_prepare_time");
 
 	key = sdscatfmt(sdsempty(), "pcp:values:series:%S", sid->name);
+	//kyoma: 这里应该是要根据timeseries identifier查具体value了
 
 	/* X[REV]RANGE key t1 t2 [count N] */
 	if (reverse) {
@@ -1311,6 +1601,9 @@ series_prepare_time(seriesQueryBaton *baton, series_set_t *result)
 	    cmd = redis_param_str(cmd, "COUNT", sizeof("COUNT")-1);
 	    cmd = redis_param_str(cmd, revbuf, revlen);
 	}
+
+	//fprintf(stderr, "cmd=%s\n", cmd);
+	
 	redisSlotsRequest(baton->slots, XRANGE, key, cmd,
 				series_prepare_time_reply, sid);
     }
@@ -1321,6 +1614,8 @@ series_prepare_time(seriesQueryBaton *baton, series_set_t *result)
 static void
 series_report_set(seriesQueryBaton *baton, series_set_t *set)
 {
+    fprintf(stderr, "kyoma, call of series_report_set\n");
+
     unsigned char	*series = set->series;
     char		hashbuf[42];
     sds			sid = NULL;
@@ -1340,6 +1635,8 @@ series_report_set(seriesQueryBaton *baton, series_set_t *set)
 static void
 series_query_report_matches(void *arg)
 {
+    //fprintf(stderr, "kyoma, call of series_query_report_matches\n");
+
     seriesQueryBaton	*baton = (seriesQueryBaton *)arg;
 
     seriesBatonCheckMagic(baton, MAGIC_QUERY, "series_query_report_matches");
@@ -1353,6 +1650,8 @@ series_query_report_matches(void *arg)
 static void
 series_query_maps(void *arg)
 {
+    //fprintf(stderr, "kyoma, call of series_query_maps\n");
+
     seriesQueryBaton	*baton = (seriesQueryBaton *)arg;
 
     seriesBatonCheckMagic(baton, MAGIC_QUERY, "series_query_maps");
@@ -1366,6 +1665,8 @@ series_query_maps(void *arg)
 static void
 series_query_eval(void *arg)
 {
+    //fprintf(stderr, "kyoma, call of series_query_eval\n");
+
     seriesQueryBaton	*baton = (seriesQueryBaton *)arg;
 
     seriesBatonCheckMagic(baton, MAGIC_QUERY, "series_query_eval");
@@ -1379,6 +1680,8 @@ series_query_eval(void *arg)
 static void
 series_query_expr(void *arg)
 {
+    //fprintf(stderr, "kyoma, call of series_query_expr\n");
+
     seriesQueryBaton	*baton = (seriesQueryBaton *)arg;
 
     seriesBatonCheckMagic(baton, MAGIC_QUERY, "series_query_expr");
@@ -1392,6 +1695,8 @@ series_query_expr(void *arg)
 static void
 series_query_report_values(void *arg)
 {
+    //fprintf(stderr, "kyoma, call of series_query_report_values\n");
+
     seriesQueryBaton	*baton = (seriesQueryBaton *)arg;
 
     seriesBatonCheckMagic(baton, MAGIC_QUERY, "series_query_report_values");
@@ -1402,9 +1707,100 @@ series_query_report_values(void *arg)
     series_query_end_phase(baton);
 }
 
+static void
+series_prepare_plus_time_reply(
+    redisAsyncContext *c, redisReply *reply, const sds cmd, void *arg)
+{
+    fprintf(stderr, "kyoma, call of series_prepare_plus_time_reply\n");
+    seriesGetSID    *sid = (seriesGetSID *)arg;
+    seriesQueryBaton    *baton = (seriesQueryBaton *)sid->baton;
+    sds         msg;
+    int         sts;
+
+}
+
+static void
+series_prepare_plus_time(seriesQueryBaton *baton, series_set_t *result)
+{
+    fprintf(stderr, "kyoma, series_prepare_plus_time, flags=%d, nseries=%d\n", baton->flags, result->nseries);
+    
+    timing_t        *tp = &baton->u.query.timing;
+    unsigned char   *series = result->series;
+    seriesGetSID    *sid;
+    char        buffer[64], revbuf[64];
+    sds         start, end, key, cmd;
+    unsigned int    i, revlen = 0, reverse = 0;
+
+    /* if only 'count' is requested, work back from most recent value */
+    if ((reverse = series_value_count_only(tp)) != 0) {
+	revlen = pmsprintf(revbuf, sizeof(revbuf), "%u", reverse);
+	start = sdsnew("+");
+    } else {
+	start = sdsnew(timeval_stream_str(&tp->start, buffer, sizeof(buffer)));
+    }
+    if (reverse)
+	end = sdsnew("-");
+    else if (tp->end.tv_sec)
+	end = sdsnew(timeval_stream_str(&tp->end, buffer, sizeof(buffer)));
+    else
+	end = sdsnew("+");  /* "+" means "no end" - to the most recent */
+
+    /*
+     * Query cache for the time series range (groups of instance:value
+     * pairs, with an associated timestamp).
+     */
+    for (i = 0; i < result->nseries; i++, series += SHA1SZ) {
+	sid = calloc(1, sizeof(seriesGetSID));
+	pmwebapi_hash_str(series, buffer, sizeof(buffer));
+
+	initSeriesGetSID(sid, buffer, 1, baton);
+	seriesBatonReference(baton, "series_prepare_time");
+
+	key = sdscatfmt(sdsempty(), "pcp:values:series:%S", sid->name);
+	//kyoma: 这里应该是要根据timeseries identifier查具体value了
+
+	/* X[REV]RANGE key t1 t2 [count N] */
+	if (reverse) {
+	    cmd = redis_command(6);
+	    cmd = redis_param_str(cmd, XREVRANGE, XREVRANGE_LEN);
+	} else {
+	    cmd = redis_command(4);
+	    cmd = redis_param_str(cmd, XRANGE, XRANGE_LEN);
+	}
+	cmd = redis_param_sds(cmd, key);
+	cmd = redis_param_sds(cmd, start);
+	cmd = redis_param_sds(cmd, end);
+	if (reverse) {
+	    cmd = redis_param_str(cmd, "COUNT", sizeof("COUNT")-1);
+	    cmd = redis_param_str(cmd, revbuf, revlen);
+	}
+
+	fprintf(stderr, "cmd=%s\n", cmd);
+	
+	redisSlotsRequest(baton->slots, XRANGE, key, cmd,
+			series_prepare_plus_time_reply, sid);
+    }
+    sdsfree(start);
+    sdsfree(end);
+
+}
+
+static void series_funcs(void *arg)
+{
+    fprintf(stderr, "kyoma, call of series_funcs\n");
+    seriesQueryBaton    *baton = (seriesQueryBaton *)arg;
+    seriesBatonCheckMagic(baton, MAGIC_QUERY, "series_funcs");
+    seriesBatonCheckCount(baton, "series_funcs");
+    seriesBatonReference(baton, "series_funcs");
+    series_prepare_plus_time(baton, &baton->u.query.root.result);
+    series_query_end_phase(baton);
+}
+
 static int
 series_time_window(timing_t *tp)
 {
+    //fprintf(stderr, "kyoma, call of series_time_window\n");
+
     if (tp->window.range ||
 	tp->window.start || tp->window.end ||
 	tp->window.count || tp->window.delta)
@@ -1415,6 +1811,8 @@ series_time_window(timing_t *tp)
 static void
 series_query_services(void *arg)
 {
+    //fprintf(stderr, "kyoma, call of series_query_services\n");
+
     seriesQueryBaton	*baton = (seriesQueryBaton *)arg;
     pmSeriesModule	*module = baton->module;
     seriesModuleData	*data = getSeriesModuleData(module);
@@ -1439,10 +1837,25 @@ series_query_services(void *arg)
     }
 }
 
+void k_traverse_tree(node_t *node, int depth){
+    fprintf(stderr, "depth=%d\ntype=%d, subtype=%d\n", depth, node->type, node->subtype);
+    if(node->left != NULL){
+    fprintf(stderr, "go left\n");
+    k_traverse_tree(node->left, depth+1);
+    }
+    if(node->right != NULL){
+    fprintf(stderr, "go right\n");
+    k_traverse_tree(node->right, depth+1);
+    }
+}
+
 int
 series_solve(pmSeriesSettings *settings,
 	node_t *root, timing_t *timing, pmSeriesFlags flags, void *arg)
 {
+    //fprintf(stderr, "kyoma, call of series_solve\n");
+    //k_traverse_tree(root, 0);
+
     seriesQueryBaton	*baton;
     unsigned int	i = 0;
 
@@ -1450,6 +1863,8 @@ series_solve(pmSeriesSettings *settings,
 	return -ENOMEM;
     initSeriesQueryBaton(baton, settings, arg);
     initSeriesGetQuery(baton, root, timing);
+
+    // kyoma: 看来这些函数pahses[i]会被依次调用的样子
 
     baton->current = &baton->phases[0];
     baton->phases[i++].func = series_query_services;
@@ -1463,12 +1878,13 @@ series_solve(pmSeriesSettings *settings,
     /* Perform final matching (set of) series solving */
     baton->phases[i++].func = series_query_expr;
 
-    if ((flags & PM_SERIES_FLAG_METADATA) || !series_time_window(timing))
+    if ((flags & PM_SERIES_FLAG_METADATA) || !series_time_window(timing)){
 	/* Report matching series IDs, unless time windowing */
 	baton->phases[i++].func = series_query_report_matches;
-    else
+    }else{
 	/* Report actual values within the given time window */
 	baton->phases[i++].func = series_query_report_values;
+    }
 
     /* final callback once everything is finished, free baton */
     baton->phases[i++].func = series_query_finished;
@@ -1482,6 +1898,8 @@ series_solve(pmSeriesSettings *settings,
 static void
 reverse_map(seriesQueryBaton *baton, redisMap *map, int nkeys, redisReply **elements)
 {
+    //fprintf(stderr, "kyoma, call of reverse_map\n");
+
     redisReply		*name, *hash;
     sds			msg, key, val;
     unsigned int	i;
@@ -1516,6 +1934,8 @@ static int
 series_map_reply(seriesQueryBaton *baton, sds series,
 		int nelements, redisReply **elements)
 {
+    //fprintf(stderr, "kyoma, call of series_map_reply\n");
+
     redisMapEntry	*entry;
     redisReply		*reply;
     sds			msg, key;
@@ -1551,6 +1971,8 @@ static void
 series_map_keys_callback(
 	redisAsyncContext *c, redisReply *reply, const sds cmd, void *arg)
 {
+    //fprintf(stderr, "kyoma, call of series_map_keys_callback\n");
+
     seriesQueryBaton	*baton = (seriesQueryBaton *)arg;
     redisReply		*child;
     sds			val, msg;
@@ -1561,7 +1983,7 @@ series_map_keys_callback(
     sts = redisSlotsRedirect(baton->slots, reply, baton->info, baton->userdata,
 			     cmd, series_map_keys_callback, arg);
     if (sts > 0)
-	return;	/* short-circuit as command was re-submitted */
+	return; /* short-circuit as command was re-submitted */
 
     if (LIKELY(reply && reply->type == REDIS_REPLY_ARRAY)) {
 	val = sdsempty();
@@ -1598,6 +2020,8 @@ series_map_keys_callback(
 static int
 series_map_keys(seriesQueryBaton *baton, const char *name)
 {
+    //fprintf(stderr, "kyoma, call of series_map_keys\n");
+
     sds			cmd, key;
 
     key = sdscatfmt(sdsempty(), "pcp:map:%s", name);
@@ -1613,6 +2037,8 @@ static void
 series_label_value_reply(
 	redisAsyncContext *c, redisReply *reply, const sds cmd, void *arg)
 {
+    //fprintf(stderr, "kyoma, call of series_label_value_reply\n");
+
     seriesGetLabelMap	*value = (seriesGetLabelMap *)arg;
     seriesQueryBaton	*baton = (seriesQueryBaton *)value->baton;
     redisMapEntry	*entry;
@@ -1662,6 +2088,8 @@ static int
 series_label_reply(seriesQueryBaton *baton, sds series,
 		int nelements, redisReply **elements)
 {
+    //fprintf(stderr, "kyoma, call of series_label_reply\n");
+
     seriesGetLabelMap	*labelmap;
     redisMapEntry 	*entry;
     redisReply		*reply;
@@ -1744,6 +2172,8 @@ static void
 series_lookup_labels_callback(
 	redisAsyncContext *c, redisReply *reply, const sds cmd, void *arg)
 {
+    //fprintf(stderr, "kyoma, call of series_lookup_labels_callback\n");
+
     seriesGetSID	*sid = (seriesGetSID *)arg;
     seriesQueryBaton    *baton = (seriesQueryBaton *)sid->baton;
     sds			msg;
@@ -1776,10 +2206,13 @@ series_lookup_labels_callback(
 static void
 series_lookup_labels(void *arg)
 {
+    //fprintf(stderr, "kyoma, call of series_lookup_labels\n");
+
     seriesQueryBaton	*baton = (seriesQueryBaton *)arg;
     seriesGetSID	*sid;
     sds			cmd, key;
     unsigned int	i;
+
 
     seriesBatonCheckMagic(baton, MAGIC_QUERY, "series_lookup_labels");
     seriesBatonCheckCount(baton, "series_lookup_labels");
@@ -1800,6 +2233,8 @@ series_lookup_labels(void *arg)
 int
 pmSeriesLabels(pmSeriesSettings *settings, int nseries, pmSID *series, void *arg)
 {
+    //fprintf(stderr, "kyoma, call of pmSeriesLabels\n");
+
     seriesQueryBaton	*baton;
     size_t		bytes;
     unsigned int	i = 0;
@@ -1877,6 +2312,8 @@ series_lookup_labelvalues_callback(
 static void
 series_lookup_labelvalues(void *arg)
 {
+    //fprintf(stderr, "kyoma, call of series_lookup_labelvalues\n");
+
     seriesQueryBaton	*baton = (seriesQueryBaton *)arg;
     seriesGetSID	*sid;
     sds			cmd, key;
@@ -1905,6 +2342,7 @@ series_lookup_labelvalues(void *arg)
 int
 pmSeriesLabelValues(pmSeriesSettings *settings, int nlabels, pmSID *labels, void *arg)
 {
+    //fprintf(stderr, "kyoma, call of pmSeriesLabelValues\n");
     seriesQueryBaton	*baton;
     size_t		bytes;
     unsigned int	i = 0;
@@ -1930,6 +2368,8 @@ static int
 extract_series_desc(seriesQueryBaton *baton, pmSID series,
 		int nelements, redisReply **elements, pmSeriesDesc *desc)
 {
+    //fprintf(stderr, "kyoma, call of extract_series_desc\n");
+
     sds			msg;
 
     if (nelements < 6) {
@@ -1965,6 +2405,8 @@ static void
 redis_series_desc_reply(
 	redisAsyncContext *c, redisReply *reply, const sds cmd, void *arg)
 {
+    fprintf(stderr, "kyoma, call of redis_series_desc_reply\n");
+
     pmSeriesDesc	desc;
     seriesGetSID	*sid = (seriesGetSID *)arg;
     seriesQueryBaton	*baton = (seriesQueryBaton *)sid->baton;
@@ -2010,6 +2452,8 @@ redis_series_desc_reply(
 static void
 series_lookup_desc(void *arg)
 {
+    fprintf(stderr, "kyoma, call of series_lookup_desc\n");
+
     seriesQueryBaton	*baton = (seriesQueryBaton *)arg;
     seriesGetSID	*sid;
     sds			cmd, key;
@@ -2039,6 +2483,8 @@ series_lookup_desc(void *arg)
 int
 pmSeriesDescs(pmSeriesSettings *settings, int nseries, pmSID *series, void *arg)
 {
+    fprintf(stderr, "kyoma, call of pmSeriesDescs\n");
+
     seriesQueryBaton	*baton;
     size_t		bytes;
     unsigned int	i = 0;
@@ -2065,6 +2511,8 @@ static int
 extract_series_inst(seriesQueryBaton *baton, seriesGetSID *sid,
 		pmSeriesInst *inst, int nelements, redisReply **elements)
 {
+    //fprintf(stderr, "kyoma, call of extract_series_inst\n");
+
     sds			msg, series = sid->metric;
 
     if (nelements < 3) {
@@ -2089,6 +2537,8 @@ static void
 series_instances_reply_callback(
 	redisAsyncContext *c, redisReply *reply, const sds cmd, void *arg)
 {
+    fprintf(stderr, "kyoma, call of series_instances_reply_callback\n");
+
     seriesGetSID	*sid = (seriesGetSID *)arg;
     seriesQueryBaton	*baton = (seriesQueryBaton *)sid->baton;
     pmSeriesInst	inst;
@@ -2134,6 +2584,8 @@ static void
 series_instances_reply(seriesQueryBaton *baton,
 		pmSID series, int nelements, redisReply **elements)
 {
+    fprintf(stderr, "kyoma, call of series_instances_reply\n");
+
     seriesGetSID	*sid;
     pmSID		name = sdsempty();
     sds			key, cmd;
@@ -2177,6 +2629,8 @@ void
 series_lookup_instances_callback(
 	redisAsyncContext *c, redisReply *reply, const sds cmd, void *arg)
 {
+    fprintf(stderr, "kyoma, call of series_lookup_instances_callback\n");
+
     seriesGetSID	*sid = (seriesGetSID *)arg;
     seriesQueryBaton	*baton = (seriesQueryBaton *)sid->baton;
     sds			msg;
@@ -2206,6 +2660,7 @@ series_lookup_instances_callback(
 static void
 series_lookup_instances(void *arg)
 {
+    //fprintf(stderr, "kyoma, call of series_lookup_instances\n");
     seriesQueryBaton	*baton = (seriesQueryBaton *)arg;
     seriesGetSID	*sid;
     sds			cmd, key;
@@ -2229,6 +2684,8 @@ series_lookup_instances(void *arg)
 int
 pmSeriesInstances(pmSeriesSettings *settings, int nseries, pmSID *series, void *arg)
 {
+    fprintf(stderr, "kyoma, call of pmSeriesInstances\n");
+
     seriesQueryBaton	*baton;
     size_t		bytes;
     unsigned int	i = 0;
@@ -2258,6 +2715,8 @@ static void
 redis_lookup_mapping_callback(
 	redisAsyncContext *c, redisReply *reply, const sds cmd, void *arg)
 {
+    fprintf(stderr, "kyoma, call of redis_lookup_mapping_callback\n");
+
     seriesQueryBaton	*baton = (seriesQueryBaton *)arg;
     sds			msg;
     int			sts;
@@ -2286,6 +2745,8 @@ redis_lookup_mapping_callback(
 static void
 series_lookup_mapping(void *arg)
 {
+    //fprintf(stderr, "kyoma, call of redis_lookup_mapping_callback\n");
+
     seriesQueryBaton	*baton = (seriesQueryBaton *)arg;
     sds			cmd, key;
 
@@ -2304,6 +2765,8 @@ series_lookup_mapping(void *arg)
 static void
 series_lookup_finished(void *arg)
 {
+    fprintf(stderr, "kyoma, call of series_lookup_finished\n");
+
     seriesQueryBaton	*baton = (seriesQueryBaton *)arg;
 
     seriesBatonCheckMagic(baton, MAGIC_QUERY, "series_lookup_finished");
@@ -2314,6 +2777,8 @@ series_lookup_finished(void *arg)
 static void
 series_lookup_services(void *arg)
 {
+    fprintf(stderr, "kyoma, call of series_lookup_services\n");
+
     seriesQueryBaton	*baton = (seriesQueryBaton *)arg;
     pmSeriesModule	*module = baton->module;
     seriesModuleData	*data = getSeriesModuleData(module);
@@ -2340,6 +2805,8 @@ static void
 redis_get_sid_callback(
 	redisAsyncContext *redis, redisReply *reply, const sds cmd, void *arg)
 {
+    //fprintf(stderr, "kyoma, call of redis_get_sid_callback\n");
+
     seriesGetSID	*sid = (seriesGetSID *)arg;
     seriesQueryBaton	*baton = (seriesQueryBaton *)sid->baton;
     sds			msg;
@@ -2370,6 +2837,8 @@ redis_get_sid_callback(
 static void
 series_lookup_sources(void *arg)
 {
+    //fprintf(stderr, "kyoma, call of series_lookup_sources\n");
+
     seriesQueryBaton	*baton = (seriesQueryBaton *)arg;
     seriesGetSID	*sid;
     sds			cmd, key;
@@ -2395,6 +2864,8 @@ series_lookup_sources(void *arg)
 int
 pmSeriesSources(pmSeriesSettings *settings, int nsources, pmSID *sources, void *arg)
 {
+    fprintf(stderr, "kyoma, call of pmSeriesSources\n");
+
     seriesQueryBaton	*baton;
     size_t		bytes;
     unsigned int	i = 0;
@@ -2423,6 +2894,8 @@ pmSeriesSources(pmSeriesSettings *settings, int nsources, pmSID *sources, void *
 static void
 series_lookup_metrics(void *arg)
 {
+    fprintf(stderr, "kyoma, call of series_lookup_metrics\n");
+
     seriesQueryBaton	*baton = (seriesQueryBaton *)arg;
     seriesGetSID	*sid;
     sds			cmd, key;
@@ -2446,6 +2919,8 @@ series_lookup_metrics(void *arg)
 int
 pmSeriesMetrics(pmSeriesSettings *settings, int nseries, sds *series, void *arg)
 {
+    fprintf(stderr, "kyoma, call of pmSeriesMetrics\n");
+
     seriesQueryBaton	*baton;
     size_t		bytes;
     unsigned int	i = 0;
@@ -2474,6 +2949,8 @@ pmSeriesMetrics(pmSeriesSettings *settings, int nseries, sds *series, void *arg)
 static void
 parsedelta(seriesQueryBaton *baton, sds string, struct timeval *result, const char *source)
 {
+    fprintf(stderr, "kyoma, call of parsedelta\n");
+
     char		*error;
     sds			msg;
     int			sts;
@@ -2490,6 +2967,8 @@ parsedelta(seriesQueryBaton *baton, sds string, struct timeval *result, const ch
 static void
 parsetime(seriesQueryBaton *baton, sds string, struct timeval *result, const char *source)
 {
+    //fprintf(stderr, "kyoma, call of parsetime\n");
+
     struct timeval	start = { 0, 0 };
     struct timeval	end = { INT_MAX, 0 };
     char		*error;
@@ -2508,122 +2987,132 @@ parsetime(seriesQueryBaton *baton, sds string, struct timeval *result, const cha
 static void
 parseuint(seriesQueryBaton *baton, sds string, unsigned int *vp, const char *source)
 {
-    unsigned int	value;
-    char		*endnum;
-    sds			msg;
+    fprintf(stderr, "kyoma, call of parseuint\n");
+
+    unsigned int    value;
+    char        *endnum;
+    sds         msg;
 
     value = (unsigned int)strtoul(string, &endnum, 10);
     if (*endnum != '\0') {
-	infofmt(msg, "Invalid sample %s requested - %s", source, string);
-	batoninfo(baton, PMLOG_ERROR, msg);
-	baton->error = -EINVAL;
+    infofmt(msg, "Invalid sample %s requested - %s", source, string);
+    batoninfo(baton, PMLOG_ERROR, msg);
+    baton->error = -EINVAL;
     } else {
-	*vp = value;
+    *vp = value;
     }
 }
 
 static void
 parsezone(seriesQueryBaton *baton, sds string, int *zone, const char *source)
 {
-    char		error[PM_MAXERRMSGLEN];
-    sds			msg;
-    int			sts;
+    fprintf(stderr, "kyoma, call of parsezone\n");
+
+    char        error[PM_MAXERRMSGLEN];
+    sds         msg;
+    int         sts;
 
     if ((sts = pmNewZone(string)) < 0) {
-	infofmt(msg, "Cannot parse %s with pmNewZone:\n%s - %s",
-		source, string, pmErrStr_r(sts, error, sizeof(error)));
-	batoninfo(baton, PMLOG_ERROR, msg);
-	baton->error = sts;
+    infofmt(msg, "Cannot parse %s with pmNewZone:\n%s - %s",
+        source, string, pmErrStr_r(sts, error, sizeof(error)));
+    batoninfo(baton, PMLOG_ERROR, msg);
+    baton->error = sts;
     } else {
-	*zone = sts;
+    *zone = sts;
     }
 }
 
 static void
 parseseries(seriesQueryBaton *baton, sds series, unsigned char *result)
 {
-    unsigned int	i, off;
-    char		*endptr, tuple[3] = {0};
-    sds			msg;
+    fprintf(stderr, "kyoma, call of parseseries\n");
+
+    unsigned int    i, off;
+    char        *endptr, tuple[3] = {0};
+    sds         msg;
 
     for (i = 0; i < 20; i++) {
-	off = i * 2;
-	tuple[0] = series[off];
-	tuple[1] = series[off+1];
-	result[i] = (unsigned char)strtoul(tuple, &endptr, 16);
-	if (endptr != &tuple[2]) {
-	    infofmt(msg, "Invalid SID %s near offset %u", series, off);
-	    batoninfo(baton, PMLOG_ERROR, msg);
-	    baton->error = -EINVAL;
-	}
+    off = i * 2;
+    tuple[0] = series[off];
+    tuple[1] = series[off+1];
+    result[i] = (unsigned char)strtoul(tuple, &endptr, 16);
+    if (endptr != &tuple[2]) {
+        infofmt(msg, "Invalid SID %s near offset %u", series, off);
+        batoninfo(baton, PMLOG_ERROR, msg);
+        baton->error = -EINVAL;
+    }
     }
 }
 
 static void
 initSeriesGetValues(seriesQueryBaton *baton, int nseries, sds *series,
-		pmSeriesTimeWindow *window)
+        pmSeriesTimeWindow *window)
 {
-    struct series_set	*result = &baton->u.query.root.result;
-    struct timing	*timing = &baton->u.query.timing;
-    struct timeval	offset;
-    int			i;
+    fprintf(stderr, "kyoma, call of initSeriesGetValues\n");
+
+    struct series_set   *result = &baton->u.query.root.result;
+    struct timing   *timing = &baton->u.query.timing;
+    struct timeval  offset;
+    int         i;
 
     /* validate and convert 40-byte (ASCII) SIDs to internal 20-byte form */
     result->nseries = nseries;
     if ((result->series = calloc(nseries, 20)) == NULL) {
-	baton->error = -ENOMEM;
+    baton->error = -ENOMEM;
     } else {
-	for (i = 0; i < nseries; i++)
-	    parseseries(baton, series[i], result->series + (i * 20));
+    for (i = 0; i < nseries; i++)
+        parseseries(baton, series[i], result->series + (i * 20));
     }
     if (baton->error) {
-	if (result->series)
-	    free(result->series);
-	return;
+    if (result->series)
+        free(result->series);
+    return;
     }
 
     /* validate and convert time window specification to internal struct */
     timing->window = *window;
     if (window->delta)
-	parsedelta(baton, window->delta, &timing->delta, "delta");
+    parsedelta(baton, window->delta, &timing->delta, "delta");
     if (window->align)
-	parsetime(baton, window->align, &timing->align, "align");
+    parsetime(baton, window->align, &timing->align, "align");
     if (window->start)
-	parsetime(baton, window->start, &timing->start, "start");
+    parsetime(baton, window->start, &timing->start, "start");
     if (window->end)
-	parsetime(baton, window->end, &timing->end, "end");
+    parsetime(baton, window->end, &timing->end, "end");
     if (window->range) {
-	parsedelta(baton, window->range, &timing->start, "range");
-	gettimeofday(&offset, NULL);
-	tsub(&offset, &timing->start);
-	timing->start = offset;
-	timing->end.tv_sec = INT_MAX;
+    parsedelta(baton, window->range, &timing->start, "range");
+    gettimeofday(&offset, NULL);
+    tsub(&offset, &timing->start);
+    timing->start = offset;
+    timing->end.tv_sec = INT_MAX;
     }
     if (window->count)
-	parseuint(baton, window->count, &timing->count, "count");
+    parseuint(baton, window->count, &timing->count, "count");
     if (window->offset)
-	parseuint(baton, window->offset, &timing->offset, "offset");
+    parseuint(baton, window->offset, &timing->offset, "offset");
     if (window->zone)
-	parsezone(baton, window->zone, &timing->zone, "timezone");
+    parsezone(baton, window->zone, &timing->zone, "timezone");
 
     /* if no time window parameters passed, default to latest value */
     if (!series_time_window(timing))
-	timing->count = 1;
+    timing->count = 1;
 }
 
 int
 pmSeriesValues(pmSeriesSettings *settings, pmSeriesTimeWindow *timing,
-		int nseries, sds *series, void *arg)
+        int nseries, sds *series, void *arg)
 {
-    seriesQueryBaton	*baton;
-    size_t		bytes;
-    unsigned int	i = 0;
+    fprintf(stderr, "kyoma, call of pmSeriesValues\n");
+
+    seriesQueryBaton    *baton;
+    size_t      bytes;
+    unsigned int    i = 0;
 
     if (nseries <= 0)
-	return -EINVAL;
+    return -EINVAL;
     bytes = sizeof(seriesQueryBaton) + (nseries * sizeof(seriesGetSID));
     if ((baton = calloc(1, bytes)) == NULL)
-	return -ENOMEM;
+    return -ENOMEM;
     initSeriesQueryBaton(baton, settings, arg);
     initSeriesGetValues(baton, nseries, series, timing);
 

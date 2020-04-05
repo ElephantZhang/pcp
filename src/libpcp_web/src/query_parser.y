@@ -155,7 +155,7 @@ static const char initial_str[]  = "Unexpected initial";
 
 %type  <n>  query
 %type  <n>  expr
-//%type  <n>  func
+%type  <n>  func
 %type  <n>  exprlist
 %type  <n>  exprval
 %type  <n>  number
@@ -184,26 +184,42 @@ query	: vector
 	;
 
 vector:	L_NAME L_LBRACE exprlist L_RBRACE L_EOS
-		{ lp->yy_np = newmetricquery($1, $3);
-		  $$ = lp->yy_series.expr = lp->yy_np;
+		{ lp->yy_np = newmetricquery($1, $3); // NAME { exprlist } EOS
+		  $$ = lp->yy_series.expr = lp->yy_np; 
 		  YYACCEPT;
 		}
 	| L_NAME L_LBRACE exprlist L_RBRACE L_LSQUARE timelist L_RSQUARE L_EOS
-		{ lp->yy_np = newmetricquery($1, $3);
+		{ lp->yy_np = newmetricquery($1, $3); // NAME { exprlist } [ timelist ] EOS
 		  $$ = lp->yy_series.expr = lp->yy_np;
 		  YYACCEPT;
 		}
 	| L_LBRACE exprlist L_RBRACE L_LSQUARE timelist L_RSQUARE L_EOS
-		{ lp->yy_np = lp->yy_series.expr = $2; YYACCEPT; }
+		{ lp->yy_np = lp->yy_series.expr = $2; // { exprlist } [ timelist ] EOS
+		  YYACCEPT; 
+		}
 	| L_LBRACE exprlist L_RBRACE L_EOS
-		{ lp->yy_np = lp->yy_series.expr = $2; YYACCEPT; }
+		{ lp->yy_np = lp->yy_series.expr = $2; // { exprlist } EOS
+		  YYACCEPT; 
+		}
 	| L_NAME L_LSQUARE timelist L_RSQUARE L_EOS
-		{ lp->yy_np = newmetric($1);
+		{ lp->yy_np = newmetric($1); // NAME [ timelist ] EOS
 		  $$ = lp->yy_series.expr = lp->yy_np;
 		  YYACCEPT;
 		}
 	| L_NAME L_EOS
-		{ lp->yy_np = newmetric($1);
+		{ lp->yy_np = newmetric($1); // NAME EOS
+		  $$ = lp->yy_series.expr = lp->yy_np;
+		  YYACCEPT;
+		}
+	| L_LPAREN L_NAME L_PLUS L_NAME L_RPAREN L_LSQUARE timelist L_RSQUARE L_EOS
+		{ lp->yy_np = newnode(N_PLUS);
+		  lp->yy_np->left = newmetric($2);
+		  lp->yy_np->right = newmetric($4);
+		  $$ = lp->yy_series.expr = lp->yy_np;
+		  YYACCEPT;
+		}
+	| func L_LSQUARE timelist L_RSQUARE L_EOS
+		{ lp->yy_np = $1; // avg(NAME) [ timelist ] EOS
 		  $$ = lp->yy_series.expr = lp->yy_np;
 		  YYACCEPT;
 		}
@@ -308,12 +324,12 @@ expr	: /* relational expressions */
 	;
 
 	/* TODO: functions */
-//func	: L_AVG L_LPAREN L_NAME L_RPAREN
-//		{ lp->yy_np = newnode(N_AVG);
-//		  lp->yy_np->left = newnode(N_NAME);
-//		  lp->yy_np->left->value = sdsnew($3);
-//		  $$ = lp->yy_np;
-//		}
+func	: L_AVG L_LPAREN L_NAME L_RPAREN
+		{ lp->yy_np = newnode(N_AVG);
+		  lp->yy_np->left = newmetric($3);
+		  //lp->yy_np->left->value = sdsnew($3);
+		  $$ = lp->yy_np;
+		}
 //	| L_COUNT L_LPAREN L_NAME L_RPAREN
 //		{ lp->yy_np = newnode(N_COUNT);
 //		  lp->yy_np->left = newnode(N_NAME);
