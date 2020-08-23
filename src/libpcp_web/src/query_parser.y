@@ -480,6 +480,93 @@ func	: L_RATE L_LPAREN val_vec L_RPAREN
 		  $$ = lp->yy_series.expr = lp->yy_np;
 		}
 	;
+//	| L_AVG L_LPAREN L_NAME L_RPAREN
+//		{ lp->yy_np = newnode(N_AVG);
+//		  lp->yy_np->left = newnode(N_NAME);
+//		  lp->yy_np->left->value = sdsnew($3);
+//		  $$ = lp->yy_np;
+//		}
+//	| L_COUNT L_LPAREN L_NAME L_RPAREN
+//		{ lp->yy_np = newnode(N_COUNT);
+//		  lp->yy_np->left = newnode(N_NAME);
+//		  lp->yy_np->left->value = sdsnew($3);
+//		  $$ = lp->yy_np;
+//		}
+//	| L_DELTA L_LPAREN L_NAME L_RPAREN
+//		{ lp->yy_np = newnode(N_DELTA);
+//		  lp->yy_np->left = newnode(N_NAME);
+//		  lp->yy_np->left->value = sdsnew($3);
+//		  $$ = lp->yy_np;
+//		}
+//	| L_MAX L_LPAREN L_NAME L_RPAREN
+//		{ lp->yy_np = newnode(N_MAX);
+//		  lp->yy_np->left = newnode(N_NAME);
+//		  lp->yy_np->left->value = sdsnew($3);
+//		  $$ = lp->yy_np;
+//		}
+//	| L_MIN L_LPAREN L_NAME L_RPAREN
+//		{ lp->yy_np = newnode(N_MIN);
+//		  lp->yy_np->left = newnode(N_NAME);
+//		  lp->yy_np->left->value = sdsnew($3);
+//		  $$ = lp->yy_np;
+//		}
+//	| L_SUM L_LPAREN L_NAME L_RPAREN
+//		{ lp->yy_np = newnode(N_SUM);
+//		  lp->yy_np->left = newnode(N_NAME);
+//		  lp->yy_np->left->value = sdsnew($3);
+//		  $$ = lp->yy_np;
+//		}
+//	| L_INSTANT L_LPAREN L_NAME L_RPAREN
+//		{ lp->yy_np = newnode(N_INSTANT);
+//		  lp->yy_np->left = newnode(N_NAME);
+//		  lp->yy_np->left->value = sdsnew($3);
+//		  $$ = lp->yy_np;
+//		}
+//	| L_DEFINED L_LPAREN L_NAME L_RPAREN
+//		{ lp->yy_np = newnode(N_DEFINED);
+//		  lp->yy_np->left = newnode(N_NAME);
+//		  lp->yy_np->left->value = sdsnew($3);
+//		  $$ = lp->yy_np;
+//		}
+//	| L_RESCALE L_LPAREN expr L_COMMA L_STRING L_RPAREN
+//		{ double		mult;
+//		  struct pmUnits	units;
+//		  char			*errmsg;
+//
+//		  lp->yy_np = newnode(N_RESCALE);
+//		  lp->yy_np->left = $3;
+//		  if (pmParseUnitsStr($5, &units, &mult, &errmsg) < 0) {
+//		      gramerr(lp, "Illegal units:", NULL, errmsg);
+//		      free(errmsg);
+//		      series_error(lp, NULL);
+//		      return -1;
+//		  }
+//		  lp->yy_np->right = newnode(N_SCALE);
+//		  lp->yy_np->right->meta.units = units;	/* struct assign */
+//		  free($5);
+//		  $$ = lp->yy_np;
+//		}
+//	| L_AVG L_LPAREN error
+//		{ gramerr(lp, name_str, follow, "avg("); YYERROR; }
+//	| L_COUNT L_LPAREN error
+//		{ gramerr(lp, name_str, follow, "count("); YYERROR; }
+//	| L_DELTA L_LPAREN error
+//		{ gramerr(lp, name_str, follow, "delta("); YYERROR; }
+//	| L_MAX L_LPAREN error
+//		{ gramerr(lp, name_str, follow, "max("); YYERROR; }
+//	| L_MIN L_LPAREN error
+//		{ gramerr(lp, name_str, follow, "min("); YYERROR; }
+//	| L_SUM L_LPAREN error
+//		{ gramerr(lp, name_str, follow, "sum("); YYERROR; }
+//	| L_RATE L_LPAREN error
+//		{ gramerr(lp, name_str, follow, "rate("); YYERROR; }
+//	| L_INSTANT L_LPAREN error
+//		{ gramerr(lp, name_str, follow, "instant("); YYERROR; }
+//	| L_RESCALE L_LPAREN error
+//		{ gramerr(lp, op_str, follow, "rescale("); YYERROR; }
+//	| L_RESCALE L_LPAREN expr L_COMMA error
+//		{ gramerr(lp, "Units string", follow, "rescale(<expr>,"); YYERROR; }
+//	;
 arithmetic_expression
 	: val_vec L_PLUS val_vec
 		{ lp->yy_np = newnode(N_PLUS);
@@ -578,93 +665,6 @@ arithmetic_expression
 		  $$ = lp->yy_series.expr = lp->yy_np;
 		}
 	;
-//	| L_AVG L_LPAREN L_NAME L_RPAREN
-//		{ lp->yy_np = newnode(N_AVG);
-//		  lp->yy_np->left = newnode(N_NAME);
-//		  lp->yy_np->left->value = sdsnew($3);
-//		  $$ = lp->yy_np;
-//		}
-//	| L_COUNT L_LPAREN L_NAME L_RPAREN
-//		{ lp->yy_np = newnode(N_COUNT);
-//		  lp->yy_np->left = newnode(N_NAME);
-//		  lp->yy_np->left->value = sdsnew($3);
-//		  $$ = lp->yy_np;
-//		}
-//	| L_DELTA L_LPAREN L_NAME L_RPAREN
-//		{ lp->yy_np = newnode(N_DELTA);
-//		  lp->yy_np->left = newnode(N_NAME);
-//		  lp->yy_np->left->value = sdsnew($3);
-//		  $$ = lp->yy_np;
-//		}
-//	| L_MAX L_LPAREN L_NAME L_RPAREN
-//		{ lp->yy_np = newnode(N_MAX);
-//		  lp->yy_np->left = newnode(N_NAME);
-//		  lp->yy_np->left->value = sdsnew($3);
-//		  $$ = lp->yy_np;
-//		}
-//	| L_MIN L_LPAREN L_NAME L_RPAREN
-//		{ lp->yy_np = newnode(N_MIN);
-//		  lp->yy_np->left = newnode(N_NAME);
-//		  lp->yy_np->left->value = sdsnew($3);
-//		  $$ = lp->yy_np;
-//		}
-//	| L_SUM L_LPAREN L_NAME L_RPAREN
-//		{ lp->yy_np = newnode(N_SUM);
-//		  lp->yy_np->left = newnode(N_NAME);
-//		  lp->yy_np->left->value = sdsnew($3);
-//		  $$ = lp->yy_np;
-//		}
-//	| L_INSTANT L_LPAREN L_NAME L_RPAREN
-//		{ lp->yy_np = newnode(N_INSTANT);
-//		  lp->yy_np->left = newnode(N_NAME);
-//		  lp->yy_np->left->value = sdsnew($3);
-//		  $$ = lp->yy_np;
-//		}
-//	| L_DEFINED L_LPAREN L_NAME L_RPAREN
-//		{ lp->yy_np = newnode(N_DEFINED);
-//		  lp->yy_np->left = newnode(N_NAME);
-//		  lp->yy_np->left->value = sdsnew($3);
-//		  $$ = lp->yy_np;
-//		}
-//	| L_RESCALE L_LPAREN expr L_COMMA L_STRING L_RPAREN
-//		{ double		mult;
-//		  struct pmUnits	units;
-//		  char			*errmsg;
-//
-//		  lp->yy_np = newnode(N_RESCALE);
-//		  lp->yy_np->left = $3;
-//		  if (pmParseUnitsStr($5, &units, &mult, &errmsg) < 0) {
-//		      gramerr(lp, "Illegal units:", NULL, errmsg);
-//		      free(errmsg);
-//		      series_error(lp, NULL);
-//		      return -1;
-//		  }
-//		  lp->yy_np->right = newnode(N_SCALE);
-//		  lp->yy_np->right->meta.units = units;	/* struct assign */
-//		  free($5);
-//		  $$ = lp->yy_np;
-//		}
-//	| L_AVG L_LPAREN error
-//		{ gramerr(lp, name_str, follow, "avg("); YYERROR; }
-//	| L_COUNT L_LPAREN error
-//		{ gramerr(lp, name_str, follow, "count("); YYERROR; }
-//	| L_DELTA L_LPAREN error
-//		{ gramerr(lp, name_str, follow, "delta("); YYERROR; }
-//	| L_MAX L_LPAREN error
-//		{ gramerr(lp, name_str, follow, "max("); YYERROR; }
-//	| L_MIN L_LPAREN error
-//		{ gramerr(lp, name_str, follow, "min("); YYERROR; }
-//	| L_SUM L_LPAREN error
-//		{ gramerr(lp, name_str, follow, "sum("); YYERROR; }
-//	| L_RATE L_LPAREN error
-//		{ gramerr(lp, name_str, follow, "rate("); YYERROR; }
-//	| L_INSTANT L_LPAREN error
-//		{ gramerr(lp, name_str, follow, "instant("); YYERROR; }
-//	| L_RESCALE L_LPAREN error
-//		{ gramerr(lp, op_str, follow, "rescale("); YYERROR; }
-//	| L_RESCALE L_LPAREN expr L_COMMA error
-//		{ gramerr(lp, "Units string", follow, "rescale(<expr>,"); YYERROR; }
-//	;
 
 %%
 

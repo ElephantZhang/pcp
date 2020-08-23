@@ -39,12 +39,45 @@ typedef struct seriesGetLabelMap {
     void		*baton;
 } seriesGetLabelMap;
 
+typedef struct seriesWithMetadata {
+    void		*baton;
+    sds			sid_name;
+    pmSeriesDesc	desc;
+} seriesWithMetadata;
+
+typedef struct seriesInitSids {
+    void		*baton;
+    int			num;
+    int			is_expr;
+    sds			exprId;
+    sds			expr;
+    seriesWithMetadata	*sid_meta;
+} seriesInitSids;
+
+typedef struct operator {
+    int			ope_type;
+    sds			parameter;
+} operator_t;
+
+typedef struct operatorStack {
+    unsigned int	num;
+    // TODO: A better memory allocate, not a fixed one
+    operator_t		operators[255];
+} operatorStack;
+
+typedef struct operandStack {
+    unsigned int	num;
+    // TODO: A better memory allocate, not a fixed one
+    pmSeriesDesc	descs[255];
+} operandStack;
+
 typedef struct seriesGetLookup {
     redisMap		*map;
     pmSeriesStringCallBack func;
     sds			pattern;
     unsigned int	nseries;
     seriesGetSID	series[0];
+    seriesInitSids	*init_series;
 } seriesGetLookup;
 
 typedef struct seriesGetQuery {
@@ -1172,40 +1205,41 @@ series_prepare_smembers(seriesQueryBaton *baton, sds kp, node_t *np)
 }
 
 static void
-series_set_function_expr_callback(
+series_hset_function_expr_callback(
 	redisAsyncContext *c, redisReply *reply, const sds cmd, void *arg)
 {
     redisSlotsBaton	*baton = (redisSlotsBaton *)arg;
     int			sts;
 
-    seriesBatonCheckMagic(baton, MAGIC_QUERY, "series_set_function_expr_callback");
+    seriesBatonCheckMagic(baton, MAGIC_QUERY, "series_hset_function_expr_callback");
 
     sts = redisSlotsRedirect(baton->slots, reply, baton->info, baton->userdata,
-			     cmd, series_set_function_expr_callback, arg);
+			     cmd, series_hset_function_expr_callback, arg);
     if (sts > 0)
 	return;	/* short-circuit as command was re-submitted */
     if (sts == 0)
 	checkStatusReplyOK(baton->info, baton->userdata, reply,
-			"%s", "pcp:expr");
+			"%s: %s", HSET, "setting series expression");
     series_query_end_phase(baton);
 }
 
 static void
-series_set_function_expr(seriesQueryBaton *baton, sds key, sds value)
+series_hset_function_expr(seriesQueryBaton *baton, sds hashbuf, sds value)
 {
-    sds			cmd;
+    sds			key, cmd, field = sdsnew("expr");
 
-    seriesBatonReference(baton, "series_prepare_set");
-    
-    key = key;
-    cmd = redis_command(3);
-    cmd = redis_param_str(cmd, SETS, SETS_LEN);
+    seriesBatonReference(baton, "series_hset_function_expr");
+
+    key = sdscatfmt(sdsempty(), "pcp:expr:%s", hashbuf);
+    cmd = redis_command(4);
+    cmd = redis_param_str(cmd, HSET, HSET_LEN);
     cmd = redis_param_sds(cmd, key);
+    cmd = redis_param_sds(cmd, field);
     cmd = redis_param_sds(cmd, value);
     if (pmDebugOptions.query) {
 	fprintf(stderr, "Cmd:\n%s\n", cmd);
     }
-    redisSlotsRequest(baton->slots, SETS, key, cmd, series_set_function_expr_callback, baton);
+    redisSlotsRequest(baton->slots, HSET, key, cmd, series_hset_function_expr_callback, baton);
 }
 
 /*
@@ -2027,12 +2061,11 @@ series_expr_canonical(node_t *np, int idx)
 	    //statement = sdscatfmt(statement, "%s<=%s", series_expr_canonical(np->left), series_expr_canonical(np->right));
 	    break;
 	case N_EQ:
-	    statement = sdscatfmt(statement, "%s==\"%s\"", series_expr_canonical(np->left, idx), series_expr_canonical(np->right, idx));
+	    statement = sdscatfmt(statement, "\"%s\"", np->value_set.series_values[idx].sid->name);
 	    break;
 	case N_GLOB:
 	    //statement = sdscatfmt(statement, "%s~~%s", series_expr_canonical(np->left), series_expr_canonical(np->right));
-	    statement = sdscatfmt(
-		statement, "%s==\"%s\"", series_expr_canonical(np->left, idx), np->value_set.series_values[idx].metric_name);
+	    statement = sdscatfmt(statement, "\"%s\"", np->value_set.series_values[idx].sid->name);
 	    break;
 	case N_GEQ:
 	    //statement = sdscatfmt(statement, "%s>=%s", series_expr_canonical(np->left), series_expr_canonical(np->right));
@@ -2045,6 +2078,9 @@ series_expr_canonical(node_t *np, int idx)
 	    break;
 	case N_AND:
 	    //statement = sdscatfmt(statement, "%s&&%s", series_expr_canonical(np->left), series_expr_canonical(np->right));
+	    // Only reserve series id
+	    statement = sdscatfmt(statement, "\"%s\"",
+		np->value_set.series_values[idx].sid->name);
 	    break;
 	case N_OR:
 	    //statement = sdscatfmt(statement, "%s||%s", series_expr_canonical(np->left), series_expr_canonical(np->right));
@@ -2078,7 +2114,10 @@ series_expr_canonical(node_t *np, int idx)
 	    statement = sdscatfmt(statement, "floor(%s)", series_expr_canonical(np->left, idx));
 	    break;
 	case N_LOG:
-	    statement = sdscatfmt(statement, "log(%s,%s)", series_expr_canonical(np->left, idx), series_expr_canonical(np->right, idx));
+	    if (np->right == NULL)
+		statement = sdscatfmt(statement, "log(%s)", series_expr_canonical(np->left, idx));
+	    else
+		statement = sdscatfmt(statement, "log(%s,%s)", series_expr_canonical(np->left, idx), series_expr_canonical(np->right, idx));
 	    break;
 	case N_SQRT:
 	    statement = sdscatfmt(statement, "sqrt(%s)", series_expr_canonical(np->left, idx));
@@ -2097,7 +2136,7 @@ series_function_hash(unsigned char *hash, node_t *np, int idx)
 {
     //SHA1_CTX	shactx;
     sds			identifier = series_expr_canonical(np, idx);
-    if (pmDebugOptions.query) printf("expression %s\n", identifier);
+    if (pmDebugOptions.query) printf("Canonical expression %s\n", identifier);
     SHA1_CTX		shactx;
     const char		prefix[] = "{\"series\":\"expr\",\"expr\":\"";
     const char		suffix[] = "\"}";
@@ -3531,15 +3570,14 @@ static void
 series_redis_hash_expression(seriesQueryBaton *baton, char *hashbuf, int len_hashbuf)
 {
     unsigned char	hash[20];
-    sds			key, value;
+    sds			value;
     node_t		*np = &baton->u.query.root;
     int			i, num_series = np->value_set.num_series;
 
     for (i = 0; i < num_series; i++) {
 	value = series_function_hash(hash, np, i);
 	pmwebapi_hash_str(hash, hashbuf, len_hashbuf);
-	key = sdscatfmt(sdsempty(), "pcp:expr:%s", hashbuf);
-	//series_set_function_expr(baton, key, value);
+	series_hset_function_expr(baton, hashbuf, value);
     }
 }
 
@@ -4125,14 +4163,276 @@ pmSeriesLabelValues(pmSeriesSettings *settings, int nlabels, pmSID *labels, void
     return 0;
 }
 
+static int
+push_operator(int ope_tpye, sds parameter, operatorStack *sta)
+{
+    sds			msg;
+
+    sta->operators[sta->num].ope_type = ope_tpye;
+    sta->operators[sta->num].parameter = parameter;
+    sta->num++;
+    if (sta->num > 255) {
+	infofmt(msg, "Overflow of operators.\n");
+	return -EPROTO;
+    }
+    return 0;
+}
+
+static int
+push_operand(pmSeriesDesc desc, operandStack *sta)
+{
+    sds			msg;
+
+    sta->descs[sta->num] = desc;
+    sta->num++;
+    if (sta->num > 255) {
+	infofmt(msg, "Overflow of operands.\n");
+	return -EPROTO;
+    }
+    return 0;
+}
+
+operator_t
+pop_operator(operatorStack *sta)
+{
+    assert(sta->num > 0);
+    --sta->num;
+    return sta->operators[sta->num];
+}
+
+operator_t
+top_operator(operatorStack *sta)
+{
+    return sta->operators[sta->num - 1];
+}
+
+pmSeriesDesc
+pop_operand(operandStack *sta)
+{
+    assert(sta->num > 0);
+    --sta->num;
+    return sta->descs[sta->num];
+}
+
+pmSeriesDesc
+top_operand(operandStack *sta)
+{
+    return sta->descs[sta->num - 1];
+}
+
+int
+precedence(int ope_type)
+{
+    if (ope_type == N_PLUS || ope_type == N_MINUS)
+	return 1;
+    else if (ope_type == N_STAR || ope_type == N_SLASH)
+	return 2;
+    else if (ope_type == N_ABS || ope_type == N_FLOOR || ope_type == N_LOG ||
+	ope_type == N_MAX || ope_type == N_MIN || ope_type == N_NOOP ||
+	ope_type == N_RATE || ope_type == N_RESCALE || ope_type == N_ROUND ||
+	ope_type == N_SQRT)
+	return 3;
+    return 0;
+}
+
+static void
+operand_stack_compute(operator_t *operator, operandStack *operand_sta)
+{
+    pmSeriesDesc	left, right;
+
+    switch (operator->ope_type) {
+	case N_ABS:
+	    // For abs(), the metadate left unchanged
+	    break;
+	case N_FLOOR:
+	    break;
+	case N_LOG:
+	    break;
+	case N_MAX:
+	    break;
+	case N_MIN:
+	    break;
+	case N_NOOP:
+	    break;
+	case N_RATE:
+	    break;
+	case N_RESCALE:
+	    break;
+	case N_ROUND:
+	    break;
+	case N_SQRT:
+	    break;
+	case N_PLUS:
+	    break;
+	case N_MINUS:
+	    break;
+	case N_STAR:
+	    break;
+	case N_SLASH:
+	    break;
+	default:
+	    fprintf(stderr, "Unknown function in expression\n");
+	    break;
+    }
+}
+
+static void
+check_precedence_compute(operatorStack *operator_sta, operandStack *operand_sta, int ope_type)
+{
+    operator_t		operator;
+    while (operator_sta->num > 0 && precedence(top_operator_sta(operator_sta) >= precedence(ope_type))) {
+	operator = pop_operator(operator_sta);
+	operand_stack_compute(&operator, operand_sta);
+    }
+}
+
+static int
+compute_metadata(seriesInitSids *init_series, pmSeriesDesc *res_desc)
+{
+    unsigned int	l, r, j, expr_len, last_len, sid_p, comma_p;
+    int			cmp, sts;
+    sds			expr = init_series->expr, tmp;
+    operatorStack	operator_sta;
+    operandStack	operand_sta;
+
+    if (pmDebugOptions.query) fprintf(stderr, "expr=%s\n", init_series->expr);
+
+    expr_len = sdslen(init_series->expr);
+    r = expr_len - 1;
+    sid_p = 0;
+    operator_sta.num = 0;
+    operand_sta.num = 0;
+
+    // Parse the expression
+    for (l = 0; l <= r; l++) {
+	if (expr[l] == '"') {
+	    ++l;
+	    while( expr[l] != '"' && l <= r) ++l;
+	    // Push this series' descriptor into operand stack
+	    sts = push_operand(init_series->sid_meta[sid_p].desc, &operand_sta);
+	    ++sid_p;
+	    continue;
+	} else if (expr[l] == '(') continue;
+	// Match functions' names
+	for (j = 0; j < FUNC_NAME_TAB_SIZE; j++) {
+	    last_len = r - l + 1;
+	    if (last_len >= func_name_tab[j].f_len) {
+		cmp = memcmp(expr + l, func_name_tab[j].f_name, func_name_tab[j].f_len);
+		if (cmp == 0) {
+		    switch (func_name_tab[j].f_type) {
+		    case N_ABS:
+			check_precedence_compute(&operator_sta, &operand_sta, N_ABS);
+			sts = push_operator(N_ABS, "", &operator_sta);
+			l += func_name_tab[j].f_len;
+			--r;
+			break;
+		    case N_FLOOR:
+			check_precedence_compute(&operator_sta, &operand_sta, N_FLOOR);
+			sts = push_operator(N_FLOOR, "", &operator_sta);
+			l += func_name_tab[j].f_len;
+			--r;
+			break;
+		    case N_LOG:
+			check_precedence_compute(&operator_sta, &operand_sta, N_LOG);
+			if ('0' <= expr[r-1] && expr[r-1] <= '9') {
+			    comma_p = r-1;
+			    while(expr[comma_p] != ',' && comma_p >= l) --comma_p;
+			    tmp = sdsnew(expr);
+			    sdsrange(tmp, comma_p + 1, r - 1);
+			    sts = push_operator(N_LOG, tmp, &operator_sta);
+			    r = comma_p - 1;
+			} else {
+			    sts = push_operator(N_LOG, "", &operator_sta);
+			    --r;
+			}
+			l += func_name_tab[j].f_len;
+			break;
+		    case N_MAX:
+			check_precedence_compute(&operator_sta, &operand_sta, N_MAX);
+			sts = push_operator(N_MAX, "", &operator_sta);
+			l += func_name_tab[j].f_len;
+			--r;
+			break;
+		    case N_MIN:
+			check_precedence_compute(&operator_sta, &operand_sta, N_MIN);
+			sts = push_operator(N_MIN, "", &operator_sta);
+			l += func_name_tab[j].f_len;
+			--r;
+			break;
+		    case N_NOOP:
+			check_precedence_compute(&operator_sta, &operand_sta, N_NOOP);
+			sts = push_operator(N_NOOP, "", &operator_sta);
+			l += func_name_tab[j].f_len;
+			--r;
+			break;
+		    case N_RATE:
+			check_precedence_compute(&operator_sta, &operand_sta, N_RATE);
+			sts = push_operator(N_RATE, "", &operator_sta);
+			l += func_name_tab[j].f_len;
+			--r;
+			break;
+		    case N_RESCALE:
+			check_precedence_compute(&operator_sta, &operand_sta, N_RESCALE);
+			comma_p = r-1;
+			while(expr[comma_p] != ',' && comma_p >= l) --comma_p;
+			tmp = sdsnew(expr);
+			sdsrange(tmp, comma_p + 1, r - 1);
+			sts = push_operator(N_RESCALE, tmp, &operator_sta);
+			r = comma_p - 1;
+			l += func_name_tab[j].f_len;
+			break;
+		    case N_ROUND:
+			check_precedence_compute(&operator_sta, &operand_sta, N_ROUND);
+			sts = push_operator(N_ROUND, "", &operator_sta);
+			l += func_name_tab[j].f_len;
+			--r;
+			break;
+		    case N_SQRT:
+			check_precedence_compute(&operator_sta, &operand_sta, N_SQRT);
+			sts = push_operator(N_RESCALE, "", &operator_sta);
+			l += func_name_tab[j].f_len;
+			--r;
+			break;
+		    case N_PLUS:
+			check_precedence_compute(&operator_sta, &operand_sta, N_PLUS);
+			sts = push_operator(N_PLUS, "", &operator_sta);
+			l += func_name_tab[j].f_len;
+			break;
+		    case N_MINUS:
+			check_precedence_compute(&operator_sta, &operand_sta, N_MINUS);
+			sts = push_operator(N_MINUS, "", &operator_sta);
+			l += func_name_tab[j].f_len;
+			break;
+		    case N_STAR:
+			check_precedence_compute(&operator_sta, &operand_sta, N_STAR);
+			sts = push_operator(N_STAR, "", &operator_sta);
+			l += func_name_tab[j].f_len;
+			break;
+		    case N_SLASH:
+			check_precedence_compute(&operator_sta, &operand_sta, N_SLASH);
+			sts = push_operator(N_SLASH, "", &operator_sta);
+			l += func_name_tab[j].f_len;
+			break;
+		    default:
+			fprintf(stderr, "Expression parse error\n");
+			break;
+		    }
+		}
+	    }
+	}
+    }
+    return 0;
+}
 
 static void
 redis_series_desc_reply(
 	redisAsyncContext *c, redisReply *reply, const sds cmd, void *arg)
 {
     pmSeriesDesc	desc;
-    seriesGetSID	*sid = (seriesGetSID *)arg;
-    seriesQueryBaton	*baton = (seriesQueryBaton *)sid->baton;
+    //seriesGetSID	*sid = (seriesGetSID *)arg;
+    seriesInitSids	*init_series = (seriesInitSids *)arg;
+    //seriesQueryBaton	*baton = (seriesQueryBaton *)sid->baton;
+    seriesQueryBaton	*baton = (seriesQueryBaton *)init_series->baton;
     sds			msg;
     int			sts;
 
@@ -4151,16 +4451,24 @@ redis_series_desc_reply(
     if (UNLIKELY(reply == NULL || reply->type != REDIS_REPLY_ARRAY)) {
 	if (sts < 0) {
 	    infofmt(msg, "expected array type from series %s %s (type=%s)",
-			sid->name, HMGET, redis_reply_type(reply));
+			init_series->exprId, HMGET, redis_reply_type(reply));
 	    batoninfo(baton, PMLOG_RESPONSE, msg);
 	}
 	baton->error = -EPROTO;
-    }
-    else if ((sts = extract_series_desc(baton, sid->name,
+    } else if (init_series->is_expr) {
+	// This series id is a fabricated series id, hashed from an expression
+	if ((sts = compute_metadata(init_series, &desc)) < 0)
+	    baton->error = sts;
+	else if ((sts = baton->callbacks->on_desc(init_series->exprId, &desc, baton->userdata)) < 0)
+	    baton->error = sts;
+    } else {
+	// This series id is a regular(true) series id
+	if ((sts = extract_series_desc(baton, init_series->exprId,
 			reply->elements, reply->element, &desc)) < 0)
-	baton->error = sts;
-    else if ((sts = baton->callbacks->on_desc(sid->name, &desc, baton->userdata)) < 0)
-	baton->error = sts;
+	    baton->error = sts;
+	else if ((sts = baton->callbacks->on_desc(init_series->exprId, &desc, baton->userdata)) < 0)
+	    baton->error = sts;
+    }
 
     sdsfree(desc.indom);
     sdsfree(desc.pmid);
@@ -4172,11 +4480,232 @@ redis_series_desc_reply(
     series_query_end_phase(baton);
 }
 
+/*static int
+recover_expr(sds expr, sds **init_sid)
+{
+    // In an arithmetic expression there may be multiple initial series ids.
+    sds_list_t		*operators_list = (sds_list_t *)calloc(1, sizeof(sds_list_t *)), *p;
+    int			l_count, r_count, count = 0;
+    unsigned int	i, j;
+    sds			*l_bracket_split = sdssplitlen(expr, sdslen(expr), "(", sizeof("(")-1, &l_count), *r_bracket_split;
+
+    p = operators_list;
+    for (i = 0; i < l_count; i++) {
+	r_bracket_split = sdssplitlen(l_bracket_split[i], sdslen(l_bracket_split[i]), ")", sizeof(")")-1, &r_count);
+	for (j = 0; j < r_count; j++) {
+	    ++count;
+	    p = (sds_list_t *)calloc(1, sizeof(sds_list_t));
+	    p->str = r_bracket_split[j];
+	    p->next = NULL;
+	    p = p->next;
+	}
+    }
+    p = operators_list;
+    while(p != NULL){
+	printf("%s\n", p->str);
+	p = p->next;
+    }
+    return 0;
+}*/
+
+static void
+series_expr_lookup_desc_reply(
+redisAsyncContext *c, redisReply *reply, const sds cmd, void *arg)
+{
+    seriesWithMetadata	*sid_meta = (seriesWithMetadata *)arg;
+    seriesQueryBaton	*baton = (seriesQueryBaton *)sid_meta->baton;
+    sds			msg;
+    int			sts;
+
+    sts = redisSlotsRedirect(baton->slots, reply, baton->info, baton->userdata,
+			     cmd, series_expr_lookup_desc_reply, arg);
+    if (sts > 0)
+	return;	/* short-circuit as command was re-submitted */
+
+    sid_meta->desc.indom = sdsempty();
+    sid_meta->desc.pmid = sdsempty();
+    sid_meta->desc.semantics = sdsempty();
+    sid_meta->desc.source = sdsempty();
+    sid_meta->desc.type = sdsempty();
+    sid_meta->desc.units = sdsempty();
+
+    if (UNLIKELY(reply == NULL || reply->type != REDIS_REPLY_ARRAY)) {
+	if (sts < 0) {
+	    infofmt(msg, "expected array type from series %s %s (type=%s)",
+			sid_meta->sid_name, HMGET, redis_reply_type(reply));
+	    batoninfo(baton, PMLOG_RESPONSE, msg);
+	}
+	baton->error = -EPROTO;
+    }
+    else if ((sts = extract_series_desc(baton, sid_meta->sid_name,
+			reply->elements, reply->element, &sid_meta->desc)) < 0)
+	baton->error = sts;
+
+    sdsfree(sid_meta->desc.indom);
+    sdsfree(sid_meta->desc.pmid);
+    sdsfree(sid_meta->desc.semantics);
+    sdsfree(sid_meta->desc.source);
+    sdsfree(sid_meta->desc.type);
+    sdsfree(sid_meta->desc.units);
+
+    series_query_end_phase(baton);
+}
+
+static void
+series_expr_lookup_desc(seriesQueryBaton *baton, seriesWithMetadata *sid_meta)
+{
+    sds			cmd, key;
+
+    seriesBatonReference(baton, "series_expr_lookup_desc");
+
+    key = sdscatfmt(sdsempty(), "pcp:desc:series:%S", sid_meta->sid_name);
+    cmd = redis_command(8);
+    cmd = redis_param_str(cmd, HMGET, HMGET_LEN);
+    cmd = redis_param_sds(cmd, key);
+    cmd = redis_param_str(cmd, "indom", sizeof("indom")-1);
+    cmd = redis_param_str(cmd, "pmid", sizeof("pmid")-1);
+    cmd = redis_param_str(cmd, "semantics", sizeof("semantics")-1);
+    cmd = redis_param_str(cmd, "source", sizeof("source")-1);
+    cmd = redis_param_str(cmd, "type", sizeof("type")-1);
+    cmd = redis_param_str(cmd, "units", sizeof("units")-1);
+    sid_meta->baton = baton;
+    redisSlotsRequest(baton->slots, HMGET, key, cmd, series_expr_lookup_desc_reply, sid_meta);
+}
+
+static int
+extract_sid(sds expr, seriesInitSids *init_series)
+{
+    int			expr_len = sdslen(expr), match, n_quotes;
+    unsigned int	i, l, r, p;
+    sds			msg, tmp;
+
+    match = 0;
+    n_quotes = 0;
+    for (i = 0; i < expr_len; i++) {
+	// Count the number of series id in this expression. A sid is always closed by a pair
+	// of double quotes
+	if (expr[i] == '"') {
+	    ++n_quotes;
+	}
+    }
+    if (n_quotes%2) {
+	infofmt(msg, "Parse expression %s error, wrong number of double quotes.\n",
+		expr);
+	return -EPROTO;
+    }
+    init_series->num = n_quotes/2;
+    init_series->sid_meta = (seriesWithMetadata *)calloc(init_series->num, sizeof(seriesWithMetadata));
+    p = 0;
+    for (i = 0; i < expr_len && p < init_series->num; i++) {
+	// Store the initial series IDs
+	if (expr[i] == '"') {
+	    if (!match) {
+		// Former quote
+		l = i+1;
+	    } else {
+		// Latter quote
+		r = i-1;
+		tmp = sdsnew(expr);
+		sdsrange(tmp, l, r);
+		init_series->sid_meta[p].sid_name = sdsnew(tmp);
+		++p;
+		sdsfree(tmp);
+	    }
+	    match = !match;
+	}
+    }
+    return 0;
+}
+
+static void
+series_lookup_expr_reply(
+	redisAsyncContext *c, redisReply *reply, const sds cmd, void *arg)
+{
+    seriesInitSids	*init_series = (seriesInitSids *)arg;
+    seriesQueryBaton	*baton = (seriesQueryBaton *)init_series->baton;
+    sds			msg, expr;
+    int			sts, nelements;
+    unsigned int	i;
+    redisReply		**elements = reply->element;
+    pmSeriesDesc	desc;
+
+    sts = redisSlotsRedirect(baton->slots, reply, baton->info, baton->userdata,
+			     cmd, series_lookup_expr_reply, arg);
+    if (sts > 0)
+	return;	/* short-circuit as command was re-submitted */
+
+    if (UNLIKELY(reply == NULL || reply->type != REDIS_REPLY_ARRAY)) {
+	if (sts < 0) {
+	    infofmt(msg, "expected array type from series %s %s (type=%s)",
+			init_series->exprId, HMGET, redis_reply_type(reply));
+	    batoninfo(baton, PMLOG_RESPONSE, msg);
+	}
+	baton->error = -EPROTO;
+    }
+    nelements = reply->elements;
+    expr = sdsempty();
+    if (nelements > 1) {
+	infofmt(msg, "bad reply from %s pcp:expr:%s (%d)", init_series->exprId, HMGET, nelements);
+	batoninfo(baton, PMLOG_RESPONSE, msg);
+	baton->error = -EPROTO;
+    }
+    if (elements[0]->type != REDIS_REPLY_NIL) {
+	// This series id is a fabricated id computed from a functions' expression
+	init_series->is_expr = 1;
+	if (extract_string(baton, init_series->exprId, elements[0], &expr, "expr")){
+	    infofmt(msg, "Extract string from %s fail", elements[0]->str);
+	    batoninfo(baton, PMLOG_RESPONSE, msg);
+	    baton->error = -EPROTO;
+	}
+	init_series->expr = expr;
+	if ((sts = extract_sid(expr, init_series)) < 0) {
+	    infofmt(msg, "Extract series id from %s fail", expr);
+	    batoninfo(baton, PMLOG_RESPONSE, msg);
+	    baton->error = -EPROTO;
+	} else {
+	    for (i = 0; i < init_series->num; i++) {
+		series_expr_lookup_desc(baton, &init_series->sid_meta[i]);
+	    }
+	}
+    }
+    series_query_end_phase(baton);
+}
+
+static void
+series_lookup_expr(void *arg)
+{
+    seriesQueryBaton	*baton = (seriesQueryBaton *)arg;
+    sds			cmd, key;
+    unsigned int	i;
+
+    seriesBatonCheckMagic(baton, MAGIC_QUERY, "series_lookup_expr");
+    seriesBatonCheckCount(baton, "series_lookup_expr");
+
+    baton->u.lookup.init_series = (seriesInitSids *)calloc(baton->u.lookup.nseries,
+		sizeof(seriesInitSids));
+    for (i = 0; i < baton->u.lookup.nseries; i++) {
+	baton->u.lookup.init_series->baton = baton;
+	baton->u.lookup.init_series->exprId = baton->u.lookup.series[i].name;
+	seriesBatonReference(baton, "series_lookup_expr");
+
+	key = sdscatfmt(sdsempty(), "pcp:expr:%S", baton->u.lookup.series[i].name);
+	cmd = redis_command(3);
+	cmd = redis_param_str(cmd, HMGET, HMGET_LEN);
+	cmd = redis_param_sds(cmd, key);
+	cmd = redis_param_str(cmd, "expr", sizeof("expr")-1);
+	// Assume this sid is not a fabricated one
+	baton->u.lookup.init_series[i].is_expr = 0;
+	redisSlotsRequest(baton->slots, HMGET, key, cmd,
+		series_lookup_expr_reply, &baton->u.lookup.init_series[i]);
+    }
+}
+
 static void
 series_lookup_desc(void *arg)
 {
     seriesQueryBaton	*baton = (seriesQueryBaton *)arg;
-    seriesGetSID	*sid;
+    //seriesGetSID	*sid;
+    seriesInitSids	*init_series;
     sds			cmd, key;
     unsigned int	i;
 
@@ -4184,10 +4713,11 @@ series_lookup_desc(void *arg)
     seriesBatonCheckCount(baton, "series_lookup_desc");
 
     for (i = 0; i < baton->u.lookup.nseries; i++) {
-	sid = &baton->u.lookup.series[i];
+	//sid = &baton->u.lookup.series[i];
+	init_series = &baton->u.lookup.init_series[i];
 	seriesBatonReference(baton, "series_lookup_desc");
 
-	key = sdscatfmt(sdsempty(), "pcp:desc:series:%S", sid->name);
+	key = sdscatfmt(sdsempty(), "pcp:desc:series:%S", init_series->exprId);
 	cmd = redis_command(8);
 	cmd = redis_param_str(cmd, HMGET, HMGET_LEN);
 	cmd = redis_param_sds(cmd, key);
@@ -4197,7 +4727,7 @@ series_lookup_desc(void *arg)
 	cmd = redis_param_str(cmd, "source", sizeof("source")-1);
 	cmd = redis_param_str(cmd, "type", sizeof("type")-1);
 	cmd = redis_param_str(cmd, "units", sizeof("units")-1);
-	redisSlotsRequest(baton->slots, HMGET, key, cmd, redis_series_desc_reply, sid);
+	redisSlotsRequest(baton->slots, HMGET, key, cmd, redis_series_desc_reply, init_series);
     }
 }
 
@@ -4219,6 +4749,7 @@ pmSeriesDescs(pmSeriesSettings *settings, int nseries, pmSID *series, void *arg)
 
     baton->current = &baton->phases[0];
     baton->phases[i++].func = series_lookup_services;
+    baton->phases[i++].func = series_lookup_expr;
     baton->phases[i++].func = series_lookup_desc;
     baton->phases[i++].func = series_lookup_finished;
     assert(i <= QUERY_PHASES);

@@ -87,6 +87,28 @@ typedef enum nodetype {
     MAX_NODETYPE
 } nodetype_t;
 
+static struct {
+    int			f_type;
+    char		*f_name;
+    unsigned int	f_len;
+} func_name_tab[] = {
+    { N_ABS,		"abs" ,		sizeof("abs") - 1 },
+    { N_FLOOR,		"floor",	sizeof("floor") - 1 },
+    { N_LOG,		"log",		sizeof("log") - 1 },
+    { N_MAX,		"max",		sizeof("max") - 1 },
+    { N_MIN,		"min",		sizeof("min") - 1 },
+    { N_NOOP,		"noop",		sizeof("noop") - 1 },
+    { N_RATE,		"rate",		sizeof("rate") - 1 },
+    { N_RESCALE,	"rescale",	sizeof("rescale") - 1},
+    { N_ROUND,		"round",	sizeof("round") - 1 },
+    { N_SQRT,		"sqrt",		sizeof("sqrt") - 1 },
+    { N_PLUS,		"+",		1 },
+    { N_MINUS,		"-",		1 },
+    { N_STAR,		"*",		1 },
+    { N_SLASH,		"/",		1 }
+};
+#define FUNC_NAME_TAB_SIZE 14
+
 typedef struct seriesGetSID {
     seriesBatonMagic	header;		/* MAGIC_SID */
     sds			name;		/* series or source SID */
@@ -177,6 +199,11 @@ typedef struct series {
     node_t		*expr;
     timing_t		time;
 } series_t;
+
+typedef struct sds_list {
+    sds			str;
+    struct sds_list	*next;
+} sds_list_t;
 
 extern int series_solve(pmSeriesSettings *, node_t *, timing_t *, pmSeriesFlags, void *);
 extern int series_load(pmSeriesSettings *, node_t *, timing_t *, pmSeriesFlags, void *);
